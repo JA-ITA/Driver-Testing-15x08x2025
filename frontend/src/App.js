@@ -1490,6 +1490,546 @@ const QuestionBank = () => {
     </DashboardLayout>
   );
 };
+// Create Question Component
+const CreateQuestion = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [categories, setCategories] = useState([]);
+  const [formData, setFormData] = useState({
+    category_id: '',
+    question_type: 'multiple_choice',
+    question_text: '',
+    options: [{ text: '', is_correct: false }, { text: '', is_correct: false }],
+    correct_answer: null,
+    video_url: '',
+    explanation: '',
+    difficulty: 'medium'
+  });
+  const [loading, setLoading] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const handleOptionChange = (index, field, value) => {
+    const newOptions = [...formData.options];
+    newOptions[index][field] = value;
+    
+    // If marking as correct, unmark others for multiple choice
+    if (field === 'is_correct' && value && formData.question_type === 'multiple_choice') {
+      newOptions.forEach((opt, idx) => {
+        if (idx !== index) opt.is_correct = false;
+      });
+    }
+    
+    setFormData({ ...formData, options: newOptions });
+  };
+
+  const addOption = () => {
+    setFormData({
+      ...formData,
+      options: [...formData.options, { text: '', is_correct: false }]
+    });
+  };
+
+  const removeOption = (index) => {
+    if (formData.options.length > 2) {
+      const newOptions = formData.options.filter((_, idx) => idx !== index);
+      setFormData({ ...formData, options: newOptions });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      const submitData = { ...formData };
+      
+      // Clean up data based on question type
+      if (formData.question_type === 'true_false') {
+        delete submitData.options;
+        delete submitData.video_url;
+      } else if (formData.question_type === 'multiple_choice') {
+        delete submitData.correct_answer;
+        delete submitData.video_url;
+      } else if (formData.question_type === 'video_embedded') {
+        delete submitData.options;
+        delete submitData.correct_answer;
+      }
+
+      await axios.post(`${API}/questions`, submitData);
+      navigate('/questions');
+    } catch (error) {
+      console.error('Error creating question:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleBulkUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post(`${API}/questions/bulk-upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      alert(`Bulk upload completed. ${response.data.created_count} questions created.`);
+      if (response.data.errors.length > 0) {
+        console.log('Upload errors:', response.data.errors);
+      }
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Create Question</h2>
+            <p className="text-slate-600 mt-1">Add new questions to the test bank.</p>
+          </div>
+          <Button
+            onClick={() => setShowBulkUpload(!showBulkUpload)}
+            variant="outline"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Upload
+          </Button>
+        </div>
+
+        {showBulkUpload && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>Bulk Upload Questions</CardTitle>
+              <CardDescription>
+                Upload multiple questions using a JSON or CSV file. 
+                <a href="#" className="text-emerald-600 hover:text-emerald-700 ml-1">Download template</a>
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <Input
+                  type="file"
+                  accept=".json,.csv"
+                  onChange={handleBulkUpload}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                />
+                <p className="text-sm text-slate-600">
+                  Supported formats: JSON, CSV. File should contain: category_id, question_type, question_text, and type-specific fields.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="shadow-sm border-slate-200">
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">Category *</Label>
+                  <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="question_type">Question Type *</Label>
+                  <Select value={formData.question_type} onValueChange={(value) => setFormData({ ...formData, question_type: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select question type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="multiple_choice">Multiple Choice</SelectItem>
+                      <SelectItem value="true_false">True/False</SelectItem>
+                      <SelectItem value="video_embedded">Video Embedded</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="question_text">Question Text *</Label>
+                <Textarea
+                  id="question_text"
+                  value={formData.question_text}
+                  onChange={(e) => setFormData({ ...formData, question_text: e.target.value })}
+                  required
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                  rows={3}
+                  placeholder="Enter your question here..."
+                />
+              </div>
+
+              {formData.question_type === 'multiple_choice' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Answer Options *</Label>
+                    <Button
+                      type="button"
+                      onClick={addOption}
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Option
+                    </Button>
+                  </div>
+                  {formData.options.map((option, index) => (
+                    <div key={index} className="flex items-center space-x-3">
+                      <div className="flex-1">
+                        <Input
+                          value={option.text}
+                          onChange={(e) => handleOptionChange(index, 'text', e.target.value)}
+                          placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                          className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="correct_answer"
+                          checked={option.is_correct}
+                          onChange={(e) => handleOptionChange(index, 'is_correct', e.target.checked)}
+                          className="text-emerald-600"
+                        />
+                        <span className="text-sm text-slate-600">Correct</span>
+                      </div>
+                      {formData.options.length > 2 && (
+                        <Button
+                          type="button"
+                          onClick={() => removeOption(index)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {formData.question_type === 'true_false' && (
+                <div className="space-y-2">
+                  <Label>Correct Answer *</Label>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="true_false"
+                        checked={formData.correct_answer === true}
+                        onChange={() => setFormData({ ...formData, correct_answer: true })}
+                        className="text-emerald-600"
+                      />
+                      <span>True</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="true_false"
+                        checked={formData.correct_answer === false}
+                        onChange={() => setFormData({ ...formData, correct_answer: false })}
+                        className="text-emerald-600"
+                      />
+                      <span>False</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {formData.question_type === 'video_embedded' && (
+                <div className="space-y-2">
+                  <Label htmlFor="video_url">Video URL</Label>
+                  <Input
+                    id="video_url"
+                    type="url"
+                    value={formData.video_url}
+                    onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                    placeholder="https://youtube.com/watch?v=..."
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="difficulty">Difficulty Level</Label>
+                  <Select value={formData.difficulty} onValueChange={(value) => setFormData({ ...formData, difficulty: value })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select difficulty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="easy">Easy</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="hard">Hard</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="explanation">Explanation (Optional)</Label>
+                <Textarea
+                  id="explanation"
+                  value={formData.explanation}
+                  onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                  rows={2}
+                  placeholder="Provide an explanation for the correct answer..."
+                />
+              </div>
+
+              <div className="flex space-x-3">
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {loading ? 'Creating...' : 'Create Question'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/questions')}
+                  className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Question Approvals Component
+const QuestionApprovals = () => {
+  const [pendingQuestions, setPendingQuestions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchPendingQuestions();
+  }, []);
+
+  const fetchPendingQuestions = async () => {
+    try {
+      const response = await axios.get(`${API}/questions/pending`);
+      setPendingQuestions(response.data);
+    } catch (error) {
+      console.error('Error fetching pending questions:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleApproval = async (questionId, action, notes = '') => {
+    try {
+      await axios.post(`${API}/questions/approve`, {
+        question_id: questionId,
+        action,
+        notes
+      });
+      fetchPendingQuestions(); // Refresh the list
+    } catch (error) {
+      console.error('Error processing approval:', error);
+    }
+  };
+
+  const getQuestionTypeIcon = (type) => {
+    switch (type) {
+      case 'video_embedded': return <Play className="h-4 w-4" />;
+      case 'multiple_choice': return <FileText className="h-4 w-4" />;
+      case 'true_false': return <CheckCircle className="h-4 w-4" />;
+      default: return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Question Approvals</h2>
+          <p className="text-slate-600 mt-1">Review and approve questions for the test bank.</p>
+        </div>
+
+        <div className="space-y-4">
+          {pendingQuestions.map((question) => (
+            <Card key={question.id} className="shadow-sm border-slate-200">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      {getQuestionTypeIcon(question.question_type)}
+                      <span className="text-sm font-medium text-slate-600 capitalize">
+                        {question.question_type.replace('_', ' ')}
+                      </span>
+                      <Badge className="bg-slate-100 text-slate-700">
+                        {question.category_name}
+                      </Badge>
+                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                        PENDING
+                      </Badge>
+                    </div>
+                    <div className="flex space-x-2">
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button className="bg-green-600 hover:bg-green-700 text-white">
+                            <CheckCircle className="h-4 w-4 mr-1" />
+                            Approve
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Approve Question</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to approve this question for the test bank?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogAction
+                              onClick={() => handleApproval(question.id, 'approve')}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              Approve
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive">
+                            <XCircle className="h-4 w-4 mr-1" />
+                            Reject
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Reject Question</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to reject this question?
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogAction
+                              onClick={() => handleApproval(question.id, 'reject')}
+                              className="bg-red-600 hover:bg-red-700"
+                            >
+                              Reject
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                  
+                  <h3 className="text-lg font-medium text-slate-800">{question.question_text}</h3>
+                  
+                  {question.video_url && (
+                    <div className="flex items-center space-x-2 text-sm text-slate-600">
+                      <Play className="h-4 w-4" />
+                      <a href={question.video_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700">
+                        View Video
+                      </a>
+                    </div>
+                  )}
+                  
+                  {question.options && (
+                    <div className="space-y-1">
+                      {question.options.map((option, idx) => (
+                        <div key={idx} className={`text-sm p-2 rounded ${option.is_correct ? 'bg-green-50 text-green-800 font-medium' : 'bg-slate-50 text-slate-700'}`}>
+                          {String.fromCharCode(65 + idx)}. {option.text}
+                          {option.is_correct && <span className="ml-2 text-green-600">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {question.question_type === 'true_false' && (
+                    <div className="text-sm bg-slate-50 p-2 rounded">
+                      <span className="font-medium">Correct Answer: </span>
+                      <span className={question.correct_answer ? 'text-green-600' : 'text-red-600'}>
+                        {question.correct_answer ? 'True' : 'False'}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {question.explanation && (
+                    <div className="text-sm bg-blue-50 p-3 rounded">
+                      <span className="font-medium text-blue-800">Explanation: </span>
+                      <span className="text-blue-700">{question.explanation}</span>
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-200">
+                    <div className="flex items-center space-x-4">
+                      <span>Submitted by: {question.created_by_name}</span>
+                      <span>Created: {new Date(question.created_at).toLocaleDateString()}</span>
+                      <span>Difficulty: {question.difficulty}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {pendingQuestions.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <Clock className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Pending Questions</h3>
+                <p className="text-slate-600">All questions have been reviewed.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Unauthorized Component
 const Unauthorized = () => (
   <div className="min-h-screen bg-gradient-to-br from-red-50 via-slate-50 to-orange-50 flex items-center justify-center p-4">
     <Card className="w-full max-w-md shadow-xl border-0 backdrop-blur-sm bg-white/90">
