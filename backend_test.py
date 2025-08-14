@@ -1,0 +1,392 @@
+#!/usr/bin/env python3
+"""
+Comprehensive Backend API Testing for Island Traffic Authority Driver's License Testing System
+Tests all endpoints, authentication, role-based access control, and data persistence.
+"""
+
+import requests
+import sys
+import json
+import base64
+from datetime import datetime
+from typing import Dict, Any, Optional
+
+class ITABackendTester:
+    def __init__(self, base_url="https://license-test-sys.preview.emergentagent.com/api"):
+        self.base_url = base_url
+        self.tokens = {}  # Store tokens for different users
+        self.users = {}   # Store user data
+        self.candidates = {}  # Store candidate data
+        self.tests_run = 0
+        self.tests_passed = 0
+        
+        print(f"🚀 Starting ITA Backend API Testing")
+        print(f"📍 Base URL: {base_url}")
+        print("=" * 80)
+
+    def log_test(self, name: str, success: bool, details: str = ""):
+        """Log test results"""
+        self.tests_run += 1
+        if success:
+            self.tests_passed += 1
+            print(f"✅ {name}")
+            if details:
+                print(f"   {details}")
+        else:
+            print(f"❌ {name}")
+            if details:
+                print(f"   {details}")
+        print()
+
+    def make_request(self, method: str, endpoint: str, data: Any = None, 
+                    token: str = None, expected_status: int = 200) -> tuple[bool, Dict]:
+        """Make HTTP request and return success status and response data"""
+        url = f"{self.base_url}/{endpoint}"
+        headers = {'Content-Type': 'application/json'}
+        
+        if token:
+            headers['Authorization'] = f'Bearer {token}'
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers, timeout=30)
+            elif method == 'POST':
+                if endpoint == 'auth/login':
+                    # Special handling for login endpoint (form data)
+                    headers = {'Authorization': f'Bearer {token}'} if token else {}
+                    response = requests.post(url, data=data, headers=headers, timeout=30)
+                else:
+                    response = requests.post(url, json=data, headers=headers, timeout=30)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, timeout=30)
+            else:
+                return False, {"error": f"Unsupported method: {method}"}
+            
+            success = response.status_code == expected_status
+            
+            try:
+                response_data = response.json()
+            except:
+                response_data = {"status_code": response.status_code, "text": response.text}
+            
+            if not success:
+                response_data["actual_status"] = response.status_code
+                response_data["expected_status"] = expected_status
+            
+            return success, response_data
+            
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    def test_user_registration(self):
+        """Test user registration for different roles"""
+        print("🔐 Testing User Registration")
+        
+        # Test candidate registration via auth/register
+        candidate_data = {
+            "email": "john.doe@test.com",
+            "password": "password123",
+            "full_name": "John Doe",
+            "role": "Candidate"
+        }
+        
+        success, response = self.make_request('POST', 'auth/register', candidate_data, expected_status=200)
+        self.log_test("Register Candidate User", success, 
+                     f"User ID: {response.get('user_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.users['candidate'] = candidate_data
+        
+        # Test staff registration
+        officer_data = {
+            "email": "jane.smith@ita.gov",
+            "password": "officer123",
+            "full_name": "Jane Smith",
+            "role": "Driver Assessment Officer"
+        }
+        
+        success, response = self.make_request('POST', 'auth/register', officer_data, expected_status=200)
+        self.log_test("Register Officer User", success,
+                     f"User ID: {response.get('user_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.users['officer'] = officer_data
+        
+        # Test invalid role registration
+        invalid_data = {
+            "email": "invalid@test.com",
+            "password": "password123",
+            "full_name": "Invalid User",
+            "role": "InvalidRole"
+        }
+        
+        success, response = self.make_request('POST', 'auth/register', invalid_data, expected_status=400)
+        self.log_test("Register Invalid Role (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_user_login(self):
+        """Test user login functionality"""
+        print("🔑 Testing User Login")
+        
+        # Test candidate login
+        if 'candidate' in self.users:
+            login_data = {
+                'username': self.users['candidate']['email'],
+                'password': self.users['candidate']['password']
+            }
+            
+            success, response = self.make_request('POST', 'auth/login', login_data, expected_status=200)
+            self.log_test("Candidate Login", success,
+                         f"Token received, Role: {response.get('user', {}).get('role', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                self.tokens['candidate'] = response.get('access_token')
+                self.users['candidate'].update(response.get('user', {}))
+        
+        # Test officer login
+        if 'officer' in self.users:
+            login_data = {
+                'username': self.users['officer']['email'],
+                'password': self.users['officer']['password']
+            }
+            
+            success, response = self.make_request('POST', 'auth/login', login_data, expected_status=200)
+            self.log_test("Officer Login", success,
+                         f"Token received, Role: {response.get('user', {}).get('role', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                self.tokens['officer'] = response.get('access_token')
+                self.users['officer'].update(response.get('user', {}))
+        
+        # Test invalid login
+        invalid_login = {
+            'username': 'nonexistent@test.com',
+            'password': 'wrongpassword'
+        }
+        
+        success, response = self.make_request('POST', 'auth/login', invalid_login, expected_status=401)
+        self.log_test("Invalid Login (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_auth_me(self):
+        """Test current user info endpoint"""
+        print("👤 Testing Current User Info")
+        
+        # Test with candidate token
+        if 'candidate' in self.tokens:
+            success, response = self.make_request('GET', 'auth/me', token=self.tokens['candidate'])
+            self.log_test("Get Candidate Info", success,
+                         f"Name: {response.get('full_name', 'N/A')}, Role: {response.get('role', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test with officer token
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'auth/me', token=self.tokens['officer'])
+            self.log_test("Get Officer Info", success,
+                         f"Name: {response.get('full_name', 'N/A')}, Role: {response.get('role', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test without token
+        success, response = self.make_request('GET', 'auth/me', expected_status=401)
+        self.log_test("Get User Info Without Token (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_candidate_registration(self):
+        """Test candidate profile registration"""
+        print("📝 Testing Candidate Registration")
+        
+        # Create a sample base64 image (1x1 pixel PNG)
+        sample_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+        
+        candidate_profile = {
+            "email": "test.candidate@example.com",
+            "password": "candidate123",
+            "full_name": "Test Candidate",
+            "date_of_birth": "1990-01-01",
+            "home_address": "123 Test Street, Test City, Test Country",
+            "trn": "123-456-789",
+            "photograph": sample_image
+        }
+        
+        success, response = self.make_request('POST', 'candidates/register', candidate_profile, expected_status=200)
+        self.log_test("Register Candidate Profile", success,
+                     f"Candidate ID: {response.get('candidate_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.candidates['test_candidate'] = {
+                **candidate_profile,
+                'id': response.get('candidate_id')
+            }
+        
+        # Test duplicate email registration
+        success, response = self.make_request('POST', 'candidates/register', candidate_profile, expected_status=400)
+        self.log_test("Duplicate Candidate Registration (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_candidate_profile_access(self):
+        """Test candidate profile access and updates"""
+        print("👤 Testing Candidate Profile Access")
+        
+        # First, login as the test candidate
+        if 'test_candidate' in self.candidates:
+            login_data = {
+                'username': self.candidates['test_candidate']['email'],
+                'password': self.candidates['test_candidate']['password']
+            }
+            
+            success, response = self.make_request('POST', 'auth/login', login_data, expected_status=200)
+            if success:
+                self.tokens['test_candidate'] = response.get('access_token')
+                
+                # Test getting candidate profile
+                success, response = self.make_request('GET', 'candidates/my-profile', 
+                                                    token=self.tokens['test_candidate'])
+                self.log_test("Get Candidate Profile", success,
+                             f"Status: {response.get('status', 'N/A')}, TRN: {response.get('trn', 'N/A')}" if success else f"Error: {response}")
+                
+                # Test updating candidate profile
+                update_data = {
+                    "home_address": "456 Updated Street, New City, Test Country",
+                    "trn": "987-654-321"
+                }
+                
+                success, response = self.make_request('PUT', 'candidates/my-profile', update_data,
+                                                    token=self.tokens['test_candidate'])
+                self.log_test("Update Candidate Profile", success,
+                             f"Profile updated successfully" if success else f"Error: {response}")
+        
+        # Test unauthorized access (candidate trying to access staff endpoints)
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'candidates', 
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to Staff Endpoint (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_staff_candidate_access(self):
+        """Test staff access to candidate data"""
+        print("👥 Testing Staff Access to Candidates")
+        
+        if 'officer' in self.tokens:
+            # Test getting all candidates
+            success, response = self.make_request('GET', 'candidates', token=self.tokens['officer'])
+            self.log_test("Officer Get All Candidates", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} candidates" if success else f"Error: {response}")
+            
+            # Test getting pending candidates
+            success, response = self.make_request('GET', 'candidates/pending', token=self.tokens['officer'])
+            self.log_test("Officer Get Pending Candidates", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} pending candidates" if success else f"Error: {response}")
+            
+            # Test candidate approval
+            if 'test_candidate' in self.candidates and self.candidates['test_candidate'].get('id'):
+                approval_data = {
+                    "candidate_id": self.candidates['test_candidate']['id'],
+                    "action": "approve",
+                    "notes": "Test approval by automated testing"
+                }
+                
+                success, response = self.make_request('POST', 'candidates/approve', approval_data,
+                                                    token=self.tokens['officer'])
+                self.log_test("Officer Approve Candidate", success,
+                             f"Approval processed" if success else f"Error: {response}")
+                
+                # Test rejection (create another candidate first)
+                reject_candidate = {
+                    "email": "reject.candidate@example.com",
+                    "password": "reject123",
+                    "full_name": "Reject Candidate",
+                    "date_of_birth": "1985-05-05",
+                    "home_address": "789 Reject Street",
+                    "trn": "555-666-777"
+                }
+                
+                success, response = self.make_request('POST', 'candidates/register', reject_candidate, expected_status=200)
+                if success:
+                    reject_data = {
+                        "candidate_id": response.get('candidate_id'),
+                        "action": "reject",
+                        "notes": "Test rejection by automated testing"
+                    }
+                    
+                    success, response = self.make_request('POST', 'candidates/approve', reject_data,
+                                                        token=self.tokens['officer'])
+                    self.log_test("Officer Reject Candidate", success,
+                                 f"Rejection processed" if success else f"Error: {response}")
+
+    def test_dashboard_stats(self):
+        """Test dashboard statistics"""
+        print("📊 Testing Dashboard Statistics")
+        
+        # Test candidate dashboard stats
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'dashboard/stats', token=self.tokens['test_candidate'])
+            self.log_test("Candidate Dashboard Stats", success,
+                         f"Profile Status: {response.get('profile_status', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test staff dashboard stats
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'dashboard/stats', token=self.tokens['officer'])
+            self.log_test("Officer Dashboard Stats", success,
+                         f"Total: {response.get('total_candidates', 0)}, Pending: {response.get('pending_candidates', 0)}, Approved: {response.get('approved_candidates', 0)}, Rejected: {response.get('rejected_candidates', 0)}" if success else f"Error: {response}")
+
+    def test_role_based_access_control(self):
+        """Test role-based access control"""
+        print("🔒 Testing Role-Based Access Control")
+        
+        # Test candidate accessing staff endpoints
+        if 'candidate' in self.tokens:
+            success, response = self.make_request('GET', 'candidates/pending', 
+                                                token=self.tokens['candidate'], expected_status=403)
+            self.log_test("Candidate Access to Pending Candidates (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test staff accessing candidate profile endpoint
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'candidates/my-profile', 
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Access to Candidate Profile Endpoint (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def run_all_tests(self):
+        """Run all backend tests"""
+        print("🧪 Starting Comprehensive Backend API Testing")
+        print(f"⏰ Test started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+        
+        try:
+            self.test_user_registration()
+            self.test_user_login()
+            self.test_auth_me()
+            self.test_candidate_registration()
+            self.test_candidate_profile_access()
+            self.test_staff_candidate_access()
+            self.test_dashboard_stats()
+            self.test_role_based_access_control()
+            
+        except Exception as e:
+            print(f"💥 Critical error during testing: {str(e)}")
+            return False
+        
+        # Print final results
+        print("=" * 80)
+        print("📋 FINAL TEST RESULTS")
+        print("=" * 80)
+        print(f"✅ Tests Passed: {self.tests_passed}")
+        print(f"❌ Tests Failed: {self.tests_run - self.tests_passed}")
+        print(f"📊 Total Tests: {self.tests_run}")
+        print(f"🎯 Success Rate: {(self.tests_passed/self.tests_run*100):.1f}%" if self.tests_run > 0 else "0%")
+        print()
+        
+        if self.tests_passed == self.tests_run:
+            print("🎉 ALL TESTS PASSED! Backend is working correctly.")
+            return True
+        else:
+            print("⚠️  Some tests failed. Please review the issues above.")
+            return False
+
+def main():
+    """Main function to run the tests"""
+    tester = ITABackendTester()
+    success = tester.run_all_tests()
+    return 0 if success else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
