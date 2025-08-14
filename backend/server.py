@@ -292,7 +292,7 @@ async def get_pending_candidates(current_user: dict = Depends(get_current_user))
         )
     
     candidates = await db.candidates.find({"status": "pending"}).to_list(1000)
-    return candidates
+    return serialize_doc(candidates)
 
 @api_router.get("/candidates/my-profile")
 async def get_my_candidate_profile(current_user: dict = Depends(get_current_user)):
