@@ -148,6 +148,39 @@ class ApprovalAction(BaseModel):
     action: str  # "approve" or "reject"
     notes: Optional[str] = None
 
+# Question Bank Models
+class TestCategory(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class QuestionOption(BaseModel):
+    text: str
+    is_correct: bool = False
+
+class QuestionCreate(BaseModel):
+    category_id: str
+    question_type: str  # "multiple_choice", "true_false", "video_embedded"
+    question_text: str
+    options: Optional[List[QuestionOption]] = None  # For multiple choice
+    correct_answer: Optional[bool] = None  # For true/false
+    video_url: Optional[str] = None  # For video-embedded questions
+    explanation: Optional[str] = None
+    difficulty: str = "medium"  # "easy", "medium", "hard"
+
+class QuestionUpdate(BaseModel):
+    question_text: Optional[str] = None
+    options: Optional[List[QuestionOption]] = None
+    correct_answer: Optional[bool] = None
+    video_url: Optional[str] = None
+    explanation: Optional[str] = None
+    difficulty: Optional[str] = None
+
+class QuestionApproval(BaseModel):
+    question_id: str
+    action: str  # "approve" or "reject"
+    notes: Optional[str] = None
+
 # Authentication routes
 @api_router.post("/auth/register", response_model=dict)
 async def register_user(user_data: UserRegister):
