@@ -429,11 +429,32 @@ const DashboardLayout = ({ children }) => {
         { label: 'My Profile', path: '/profile', icon: User }
       ];
     } else {
-      return [
+      const staffItems = [
         ...baseItems,
         { label: 'Candidates', path: '/candidates', icon: Users },
         { label: 'Pending Approvals', path: '/approvals', icon: FileCheck }
       ];
+      
+      // Question Bank items for staff
+      if (user.role === 'Administrator') {
+        staffItems.push(
+          { label: 'Test Categories', path: '/categories', icon: BookOpen },
+          { label: 'Question Bank', path: '/questions', icon: FileText },
+          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle }
+        );
+      } else if (user.role === 'Regional Director') {
+        staffItems.push(
+          { label: 'Question Bank', path: '/questions', icon: FileText },
+          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle }
+        );
+      } else if (user.role in ['Driver Assessment Officer', 'Manager']) {
+        staffItems.push(
+          { label: 'Question Bank', path: '/questions', icon: FileText },
+          { label: 'Create Question', path: '/create-question', icon: Plus }
+        );
+      }
+      
+      return staffItems;
     }
   };
 
