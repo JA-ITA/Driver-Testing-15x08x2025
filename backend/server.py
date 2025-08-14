@@ -309,7 +309,7 @@ async def get_my_candidate_profile(current_user: dict = Depends(get_current_user
             detail="Candidate profile not found"
         )
     
-    return candidate
+    return serialize_doc(candidate)
 
 @api_router.put("/candidates/my-profile")
 async def update_my_candidate_profile(
