@@ -442,6 +442,384 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
     
     return stats
 
+# Test Categories routes
+@api_router.post("/categories")
+async def create_category(category_data: TestCategory, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create categories
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create test categories"
+        )
+    
+    category_doc = {
+        "id": str(uuid.uuid4()),
+        "name": category_data.name,
+        "description": category_data.description,
+        "is_active": category_data.is_active,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.test_categories.insert_one(category_doc)
+    return {"message": "Category created successfully", "category_id": category_doc["id"]}
+
+@api_router.get("/categories")
+async def get_categories(current_user: dict = Depends(get_current_user)):
+    # All authenticated users can view categories
+    categories = await db.test_categories.find({"is_active": True}).to_list(1000)
+    return serialize_doc(categories)
+
+@api_router.put("/categories/{category_id}")
+async def update_category(category_id: str, category_data: TestCategory, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can update categories
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update test categories"
+        )
+    
+    update_data = {
+        "name": category_data.name,
+        "description": category_data.description,
+        "is_active": category_data.is_active,
+        "updated_by": current_user["email"],
+        "updated_at": datetime.utcnow()
+    }
+    
+    result = await db.test_categories.update_one(
+        {"id": category_id},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found"
+        )
+    
+    return {"message": "Category updated successfully"}
+
+# Questions routes
+@api_router.post("/questions")
+async def create_question(question_data: QuestionCreate, current_user: dict = Depends(get_current_user)):
+    # Only Officers, Managers, and Administrators can create questions
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to create questions"
+        )
+    
+    # Validate question type
+    if question_data.question_type not in ["multiple_choice", "true_false", "video_embedded"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid question type"
+        )
+    
+    # Validate category exists
+    category = await db.test_categories.find_one({"id": question_data.category_id, "is_active": True})
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found or inactive"
+        )
+    
+    # Validate question format
+    if question_data.question_type == "multiple_choice":
+        if not question_data.options or len(question_data.options) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Multiple choice questions must have at least 2 options"
+            )
+        correct_count = sum(1 for opt in question_data.options if opt.is_correct)
+        if correct_count != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Multiple choice questions must have exactly one correct answer"
+            )
+    elif question_data.question_type == "true_false":
+        if question_data.correct_answer is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="True/false questions must have a correct answer"
+            )
+    
+    question_doc = {
+        "id": str(uuid.uuid4()),
+        "category_id": question_data.category_id,
+        "category_name": category["name"],
+        "question_type": question_data.question_type,
+        "question_text": question_data.question_text,
+        "options": [opt.dict() for opt in question_data.options] if question_data.options else None,
+        "correct_answer": question_data.correct_answer,
+        "video_url": question_data.video_url,
+        "explanation": question_data.explanation,
+        "difficulty": question_data.difficulty,
+        "status": "pending",  # pending, approved, rejected
+        "created_by": current_user["email"],
+        "created_by_name": current_user["full_name"],
+        "created_at": datetime.utcnow(),
+        "approved_by": None,
+        "approved_at": None,
+        "approval_notes": None
+    }
+    
+    await db.questions.insert_one(question_doc)
+    return {"message": "Question created successfully", "question_id": question_doc["id"]}
+
+@api_router.get("/questions")
+async def get_questions(
+    category_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    # Build query filter
+    query_filter = {}
+    if category_id:
+        query_filter["category_id"] = category_id
+    if status:
+        query_filter["status"] = status
+    
+    # Role-based filtering
+    if current_user["role"] == "Candidate":
+        # Candidates can only see approved questions
+        query_filter["status"] = "approved"
+    elif current_user["role"] in ["Driver Assessment Officer", "Manager"]:
+        # Officers and Managers can see their own questions and approved ones
+        if not status:  # If no status filter, show their own + approved
+            questions = await db.questions.find({
+                "$or": [
+                    {"created_by": current_user["email"]},
+                    {"status": "approved"}
+                ],
+                **query_filter
+            }).to_list(1000)
+            return serialize_doc(questions)
+    
+    questions = await db.questions.find(query_filter).to_list(1000)
+    return serialize_doc(questions)
+
+@api_router.get("/questions/pending")
+async def get_pending_questions(current_user: dict = Depends(get_current_user)):
+    # Only Regional Directors and Administrators can view pending questions for approval
+    if current_user["role"] not in ["Regional Director", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view pending questions"
+        )
+    
+    questions = await db.questions.find({"status": "pending"}).to_list(1000)
+    return serialize_doc(questions)
+
+@api_router.put("/questions/{question_id}")
+async def update_question(
+    question_id: str,
+    question_data: QuestionUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Check if question exists and user can edit it
+    question = await db.questions.find_one({"id": question_id})
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found"
+        )
+    
+    # Only the creator or administrators can edit questions
+    if question["created_by"] != current_user["email"] and current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to edit this question"
+        )
+    
+    # Can only edit pending or rejected questions
+    if question["status"] == "approved":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot edit approved questions"
+        )
+    
+    # Build update document
+    update_data = {}
+    if question_data.question_text is not None:
+        update_data["question_text"] = question_data.question_text
+    if question_data.options is not None:
+        update_data["options"] = [opt.dict() for opt in question_data.options]
+    if question_data.correct_answer is not None:
+        update_data["correct_answer"] = question_data.correct_answer
+    if question_data.video_url is not None:
+        update_data["video_url"] = question_data.video_url
+    if question_data.explanation is not None:
+        update_data["explanation"] = question_data.explanation
+    if question_data.difficulty is not None:
+        update_data["difficulty"] = question_data.difficulty
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        update_data["status"] = "pending"  # Reset to pending after edit
+        
+        await db.questions.update_one(
+            {"id": question_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Question updated successfully"}
+
+@api_router.post("/questions/approve")
+async def approve_reject_question(
+    approval_data: QuestionApproval,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Regional Directors and Administrators can approve questions
+    if current_user["role"] not in ["Regional Director", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to approve questions"
+        )
+    
+    if approval_data.action not in ["approve", "reject"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Action must be 'approve' or 'reject'"
+        )
+    
+    question = await db.questions.find_one({"id": approval_data.question_id})
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found"
+        )
+    
+    update_data = {
+        "status": "approved" if approval_data.action == "approve" else "rejected",
+        "approved_by": current_user["email"],
+        "approved_by_name": current_user["full_name"],
+        "approved_at": datetime.utcnow(),
+        "approval_notes": approval_data.notes
+    }
+    
+    await db.questions.update_one(
+        {"id": approval_data.question_id},
+        {"$set": update_data}
+    )
+    
+    return {"message": f"Question {approval_data.action}d successfully"}
+
+@api_router.post("/questions/bulk-upload")
+async def bulk_upload_questions(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Officers, Managers, and Administrators can bulk upload
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to bulk upload questions"
+        )
+    
+    if not file.filename.endswith(('.json', '.csv')):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be JSON or CSV format"
+        )
+    
+    try:
+        content = await file.read()
+        
+        if file.filename.endswith('.json'):
+            import json
+            questions_data = json.loads(content.decode('utf-8'))
+        else:
+            # Handle CSV format
+            import csv
+            import io
+            csv_content = content.decode('utf-8')
+            csv_reader = csv.DictReader(io.StringIO(csv_content))
+            questions_data = list(csv_reader)
+        
+        created_count = 0
+        errors = []
+        
+        for idx, question_data in enumerate(questions_data):
+            try:
+                # Validate required fields
+                required_fields = ['category_id', 'question_type', 'question_text']
+                for field in required_fields:
+                    if field not in question_data:
+                        errors.append(f"Row {idx + 1}: Missing required field '{field}'")
+                        continue
+                
+                # Create question document
+                question_doc = {
+                    "id": str(uuid.uuid4()),
+                    "category_id": question_data['category_id'],
+                    "question_type": question_data['question_type'],
+                    "question_text": question_data['question_text'],
+                    "options": question_data.get('options'),
+                    "correct_answer": question_data.get('correct_answer'),
+                    "video_url": question_data.get('video_url'),
+                    "explanation": question_data.get('explanation'),
+                    "difficulty": question_data.get('difficulty', 'medium'),
+                    "status": "pending",
+                    "created_by": current_user["email"],
+                    "created_by_name": current_user["full_name"],
+                    "created_at": datetime.utcnow(),
+                    "approved_by": None,
+                    "approved_at": None,
+                    "approval_notes": None
+                }
+                
+                await db.questions.insert_one(question_doc)
+                created_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {idx + 1}: {str(e)}")
+        
+        return {
+            "message": f"Bulk upload completed. {created_count} questions created.",
+            "created_count": created_count,
+            "errors": errors
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Error processing file: {str(e)}"
+        )
+
+# Question Bank Statistics
+@api_router.get("/questions/stats")
+async def get_question_stats(current_user: dict = Depends(get_current_user)):
+    # Get question statistics
+    total_questions = await db.questions.count_documents({})
+    pending_questions = await db.questions.count_documents({"status": "pending"})
+    approved_questions = await db.questions.count_documents({"status": "approved"})
+    rejected_questions = await db.questions.count_documents({"status": "rejected"})
+    
+    # Get category breakdown
+    pipeline = [
+        {"$group": {"_id": "$category_name", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    category_stats = await db.questions.aggregate(pipeline).to_list(100)
+    
+    # Get questions by type
+    type_pipeline = [
+        {"$group": {"_id": "$question_type", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    type_stats = await db.questions.aggregate(type_pipeline).to_list(100)
+    
+    return {
+        "total_questions": total_questions,
+        "pending_questions": pending_questions,
+        "approved_questions": approved_questions,
+        "rejected_questions": rejected_questions,
+        "by_category": serialize_doc(category_stats),
+        "by_type": serialize_doc(type_stats)
+    }
+
 # Include the router in the main app
 app.include_router(api_router)
 
