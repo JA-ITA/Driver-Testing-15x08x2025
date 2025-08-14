@@ -427,6 +427,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+async def create_default_admin():
+    """Create default admin account if it doesn't exist"""
+    admin_email = "admin@ita.gov"
+    admin_password = "admin123"
+    
+    # Check if admin already exists
+    existing_admin = await db.users.find_one({"email": admin_email})
+    if existing_admin:
+        logger.info("Default admin account already exists")
+        return
+    
+    # Create default admin account
+    hashed_password = get_password_hash(admin_password)
+    admin_doc = {
+        "id": str(uuid.uuid4()),
+        "email": admin_email,
+        "hashed_password": hashed_password,
+        "full_name": "System Administrator",
+        "role": "Administrator",
+        "created_at": datetime.utcnow(),
+        "is_active": True
+    }
+    
+    await db.users.insert_one(admin_doc)
+    logger.info(f"✅ Default admin account created: {admin_email}")
+    logger.info(f"🔑 Admin password: {admin_password}")
+
+@app.on_event("startup")
+async def startup_event():
+    """Run startup tasks"""
+    await create_default_admin()
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
