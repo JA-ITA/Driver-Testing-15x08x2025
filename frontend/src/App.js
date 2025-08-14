@@ -2126,6 +2126,38 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/question-approvals"
+            element={
+              <ProtectedRoute allowedRoles={['Regional Director', 'Administrator']}>
+                <QuestionApprovals />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/categories"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <TestCategories />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/questions"
+            element={
+              <ProtectedRoute allowedRoles={['Driver Assessment Officer', 'Manager', 'Administrator', 'Regional Director']}>
+                <QuestionBank />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/create-question"
+            element={
+              <ProtectedRoute allowedRoles={['Driver Assessment Officer', 'Manager', 'Administrator']}>
+                <CreateQuestion />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
