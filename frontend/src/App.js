@@ -1127,7 +1127,369 @@ const CandidateProfile = () => {
   );
 };
 
-// Unauthorized Component
+// Test Categories Component
+const TestCategories = () => {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [formData, setFormData] = useState({ name: '', description: '', is_active: true });
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleCreateCategory = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/categories`, formData);
+      setShowCreateForm(false);
+      setFormData({ name: '', description: '', is_active: true });
+      fetchCategories();
+    } catch (error) {
+      console.error('Error creating category:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Test Categories</h2>
+            <p className="text-slate-600 mt-1">Manage question categories for the test bank.</p>
+          </div>
+          <Button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Category
+          </Button>
+        </div>
+
+        {showCreateForm && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>Create New Category</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateCategory} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Category Name *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      required
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      placeholder="e.g., Road Code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Input
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      placeholder="Category description"
+                    />
+                  </div>
+                </div>
+                <div className="flex space-x-3">
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    Create Category
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowCreateForm(false)}
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {categories.map((category) => (
+            <Card key={category.id} className="shadow-sm border-slate-200 hover:shadow-md transition-shadow">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="text-lg font-medium text-slate-800">{category.name}</span>
+                  <Badge className={category.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}>
+                    {category.is_active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-slate-600 text-sm mb-4">{category.description || 'No description'}</p>
+                <div className="text-xs text-slate-500">
+                  Created: {new Date(category.created_at).toLocaleDateString()}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Question Bank Component
+const QuestionBank = () => {
+  const { user } = useAuth();
+  const [questions, setQuestions] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({ category_id: '', status: '' });
+  const [stats, setStats] = useState({});
+
+  useEffect(() => {
+    fetchQuestions();
+    fetchCategories();
+    fetchStats();
+  }, [filter]);
+
+  const fetchQuestions = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filter.category_id) params.append('category_id', filter.category_id);
+      if (filter.status) params.append('status', filter.status);
+      
+      const response = await axios.get(`${API}/questions?${params}`);
+      setQuestions(response.data);
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+    }
+    setLoading(false);
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await axios.get(`${API}/questions/stats`);
+      setStats(response.data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'approved': return 'bg-green-100 text-green-800 border-green-300';
+      case 'rejected': return 'bg-red-100 text-red-800 border-red-300';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+  };
+
+  const getQuestionTypeIcon = (type) => {
+    switch (type) {
+      case 'video_embedded': return <Play className="h-4 w-4" />;
+      case 'multiple_choice': return <FileText className="h-4 w-4" />;
+      case 'true_false': return <CheckCircle className="h-4 w-4" />;
+      default: return <FileText className="h-4 w-4" />;
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Question Bank</h2>
+            <p className="text-slate-600 mt-1">Manage test questions and review submissions.</p>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-600">Total Questions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-slate-800">{stats.total_questions || 0}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-600">Pending Review</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">{stats.pending_questions || 0}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-600">Approved</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{stats.approved_questions || 0}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-slate-600">Rejected</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{stats.rejected_questions || 0}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card className="shadow-sm border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-48">
+                <Select value={filter.category_id} onValueChange={(value) => setFilter({ ...filter, category_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Categories</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 min-w-48">
+                <Select value={filter.status} onValueChange={(value) => setFilter({ ...filter, status: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Questions List */}
+        <div className="space-y-4">
+          {questions.map((question) => (
+            <Card key={question.id} className="shadow-sm border-slate-200">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center space-x-3">
+                      {getQuestionTypeIcon(question.question_type)}
+                      <span className="text-sm font-medium text-slate-600 capitalize">
+                        {question.question_type.replace('_', ' ')}
+                      </span>
+                      <Badge className="bg-slate-100 text-slate-700">
+                        {question.category_name}
+                      </Badge>
+                      <Badge className={`px-2 py-1 text-xs ${getStatusColor(question.status)}`}>
+                        {question.status.toUpperCase()}
+                      </Badge>
+                    </div>
+                    
+                    <h3 className="text-lg font-medium text-slate-800">{question.question_text}</h3>
+                    
+                    {question.video_url && (
+                      <div className="flex items-center space-x-2 text-sm text-slate-600">
+                        <Play className="h-4 w-4" />
+                        <span>Video attached</span>
+                      </div>
+                    )}
+                    
+                    {question.options && (
+                      <div className="space-y-1">
+                        {question.options.map((option, idx) => (
+                          <div key={idx} className={`text-sm p-2 rounded ${option.is_correct ? 'bg-green-50 text-green-800 font-medium' : 'bg-slate-50 text-slate-700'}`}>
+                            {String.fromCharCode(65 + idx)}. {option.text}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {question.question_type === 'true_false' && (
+                      <div className="text-sm">
+                        <span className="font-medium">Correct Answer: </span>
+                        <span className={question.correct_answer ? 'text-green-600' : 'text-red-600'}>
+                          {question.correct_answer ? 'True' : 'False'}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center space-x-4 text-xs text-slate-500">
+                      <span>By: {question.created_by_name}</span>
+                      <span>Created: {new Date(question.created_at).toLocaleDateString()}</span>
+                      <span>Difficulty: {question.difficulty}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {questions.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <FileText className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Questions Found</h3>
+                <p className="text-slate-600">No questions match your current filters.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
 const Unauthorized = () => (
   <div className="min-h-screen bg-gradient-to-br from-red-50 via-slate-50 to-orange-50 flex items-center justify-center p-4">
     <Card className="w-full max-w-md shadow-xl border-0 backdrop-blur-sm bg-white/90">
