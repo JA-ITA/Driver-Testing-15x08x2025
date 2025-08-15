@@ -1721,6 +1721,587 @@ async def get_test_analytics(current_user: dict = Depends(get_current_user)):
     }
 
 # =============================================================================
+# PHASE 6: MULTI-STAGE TESTING SYSTEM APIS
+# =============================================================================
+
+# Multi-Stage Test Configuration APIs
+@api_router.post("/multi-stage-test-configs")
+async def create_multi_stage_test_config(config_data: MultiStageTestConfiguration, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create multi-stage test configurations
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create multi-stage test configurations"
+        )
+    
+    # Validate category exists
+    category = await db.test_categories.find_one({"id": config_data.category_id, "is_active": True})
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found or inactive"
+        )
+    
+    # Validate difficulty distribution adds up to 100
+    if config_data.written_difficulty_distribution:
+        total_percentage = sum(config_data.written_difficulty_distribution.values())
+        if total_percentage != 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Written test difficulty distribution must add up to 100%"
+            )
+    
+    config_doc = {
+        "id": str(uuid.uuid4()),
+        "name": config_data.name,
+        "description": config_data.description,
+        "category_id": config_data.category_id,
+        "category_name": category["name"],
+        "written_total_questions": config_data.written_total_questions,
+        "written_pass_mark_percentage": config_data.written_pass_mark_percentage,
+        "written_time_limit_minutes": config_data.written_time_limit_minutes,
+        "written_difficulty_distribution": config_data.written_difficulty_distribution,
+        "yard_pass_mark_percentage": config_data.yard_pass_mark_percentage,
+        "road_pass_mark_percentage": config_data.road_pass_mark_percentage,
+        "is_active": config_data.is_active,
+        "requires_officer_assignment": config_data.requires_officer_assignment,
+        "test_type": "multi_stage",
+        "created_by": current_user["email"],
+        "created_by_name": current_user["full_name"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.multi_stage_test_configurations.insert_one(config_doc)
+    return {"message": "Multi-stage test configuration created successfully", "config_id": config_doc["id"]}
+
+@api_router.get("/multi-stage-test-configs")
+async def get_multi_stage_test_configs(current_user: dict = Depends(get_current_user)):
+    # All authenticated users can view active multi-stage test configurations
+    configs = await db.multi_stage_test_configurations.find({"is_active": True}).to_list(1000)
+    return serialize_doc(configs)
+
+@api_router.get("/multi-stage-test-configs/{config_id}")
+async def get_multi_stage_test_config(config_id: str, current_user: dict = Depends(get_current_user)):
+    config = await db.multi_stage_test_configurations.find_one({"id": config_id})
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test configuration not found"
+        )
+    return serialize_doc(config)
+
+@api_router.put("/multi-stage-test-configs/{config_id}")
+async def update_multi_stage_test_config(
+    config_id: str, 
+    config_data: MultiStageTestConfigurationUpdate, 
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update multi-stage test configurations
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update multi-stage test configurations"
+        )
+    
+    config = await db.multi_stage_test_configurations.find_one({"id": config_id})
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test configuration not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in config_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.multi_stage_test_configurations.update_one(
+            {"id": config_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Multi-stage test configuration updated successfully"}
+
+# Evaluation Criteria APIs
+@api_router.post("/evaluation-criteria")
+async def create_evaluation_criterion(criterion_data: EvaluationCriterion, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create evaluation criteria
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create evaluation criteria"
+        )
+    
+    if criterion_data.stage not in ["yard", "road"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Stage must be either 'yard' or 'road'"
+        )
+    
+    criterion_doc = {
+        "id": str(uuid.uuid4()),
+        "name": criterion_data.name,
+        "description": criterion_data.description,
+        "stage": criterion_data.stage,
+        "max_score": criterion_data.max_score,
+        "is_critical": criterion_data.is_critical,
+        "is_active": criterion_data.is_active,
+        "created_by": current_user["email"],
+        "created_by_name": current_user["full_name"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.evaluation_criteria.insert_one(criterion_doc)
+    return {"message": "Evaluation criterion created successfully", "criterion_id": criterion_doc["id"]}
+
+@api_router.get("/evaluation-criteria")
+async def get_evaluation_criteria(
+    stage: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    # All staff can view evaluation criteria
+    if current_user["role"] == "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to evaluation criteria"
+        )
+    
+    query_filter = {"is_active": True}
+    if stage:
+        query_filter["stage"] = stage
+    
+    criteria = await db.evaluation_criteria.find(query_filter).to_list(1000)
+    return serialize_doc(criteria)
+
+@api_router.put("/evaluation-criteria/{criterion_id}")
+async def update_evaluation_criterion(
+    criterion_id: str,
+    criterion_data: EvaluationCriterionUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update evaluation criteria
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update evaluation criteria"
+        )
+    
+    criterion = await db.evaluation_criteria.find_one({"id": criterion_id})
+    if not criterion:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evaluation criterion not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in criterion_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.evaluation_criteria.update_one(
+            {"id": criterion_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Evaluation criterion updated successfully"}
+
+# Multi-Stage Test Session APIs
+@api_router.post("/multi-stage-tests/start")
+async def start_multi_stage_test_session(test_data: MultiStageTestSession, current_user: dict = Depends(get_current_user)):
+    # Only approved candidates can start multi-stage tests
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"], "status": "approved"})
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only approved candidates can start tests"
+            )
+        test_data.candidate_id = candidate["id"]
+        
+        # Check identity verification requirement (same as single-stage tests)
+        if test_data.appointment_id:
+            access_check = await check_test_access(test_data.test_config_id, current_user, test_data.appointment_id)
+            if not access_check["access_granted"]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=access_check["message"]
+                )
+    else:
+        # Staff members can start tests for testing purposes
+        candidate = await db.candidates.find_one({"id": test_data.candidate_id})
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Candidate not found"
+            )
+    
+    # Get multi-stage test configuration
+    test_config = await db.multi_stage_test_configurations.find_one({"id": test_data.test_config_id, "is_active": True})
+    if not test_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test configuration not found or inactive"
+        )
+    
+    # Check if candidate has an active multi-stage session
+    active_session = await db.multi_stage_test_sessions.find_one({
+        "candidate_id": test_data.candidate_id,
+        "test_config_id": test_data.test_config_id,
+        "status": {"$in": ["active", "written_passed", "yard_passed"]}
+    })
+    if active_session:
+        return serialize_doc(active_session)
+    
+    # Create multi-stage test session
+    session_doc = {
+        "id": str(uuid.uuid4()),
+        "test_config_id": test_data.test_config_id,
+        "candidate_id": test_data.candidate_id,
+        "appointment_id": test_data.appointment_id,
+        "candidate_email": candidate["email"],
+        "candidate_name": candidate["full_name"],
+        "test_name": test_config["name"],
+        "status": "active",  # active, written_passed, yard_passed, completed, failed
+        "current_stage": "written",  # written, yard, road
+        "stage_results": {
+            "written": {"completed": False, "passed": None, "session_id": None},
+            "yard": {"completed": False, "passed": None, "evaluated_by": None},
+            "road": {"completed": False, "passed": None, "evaluated_by": None}
+        },
+        "officer_assignments": {},
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.multi_stage_test_sessions.insert_one(session_doc)
+    
+    return serialize_doc(session_doc)
+
+@api_router.get("/multi-stage-tests/session/{session_id}")
+async def get_multi_stage_test_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    session = await db.multi_stage_test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test session not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or session["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test session"
+            )
+    
+    return serialize_doc(session)
+
+# Stage Evaluation APIs
+@api_router.post("/multi-stage-tests/evaluate-stage")
+async def evaluate_stage(stage_result: StageResult, current_user: dict = Depends(get_current_user)):
+    # Only officers can evaluate practical stages
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only assessment officers can evaluate test stages"
+        )
+    
+    if stage_result.stage not in ["yard", "road"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only evaluate 'yard' or 'road' stages through this endpoint"
+        )
+    
+    # Get the multi-stage session
+    session = await db.multi_stage_test_sessions.find_one({"id": stage_result.session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test session not found"
+        )
+    
+    # Validate that the session is at the correct stage
+    if session["current_stage"] != stage_result.stage:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot evaluate {stage_result.stage} stage. Current stage is {session['current_stage']}"
+        )
+    
+    # Get test configuration
+    test_config = await db.multi_stage_test_configurations.find_one({"id": session["test_config_id"]})
+    if not test_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test configuration not found"
+        )
+    
+    # Calculate score and determine pass/fail
+    total_score = 0
+    max_possible_score = 0
+    critical_passed = True
+    
+    for evaluation in stage_result.evaluations:
+        criterion = await db.evaluation_criteria.find_one({"id": evaluation.criterion_id, "stage": stage_result.stage, "is_active": True})
+        if criterion:
+            total_score += evaluation.score
+            max_possible_score += criterion["max_score"]
+            
+            # Check critical criteria
+            if criterion["is_critical"] and evaluation.score < criterion["max_score"]:
+                critical_passed = False
+    
+    # Determine pass/fail based on percentage and critical criteria
+    pass_mark_key = f"{stage_result.stage}_pass_mark_percentage"
+    pass_percentage = test_config.get(pass_mark_key, 75)
+    
+    score_percentage = (total_score / max_possible_score * 100) if max_possible_score > 0 else 0
+    stage_passed = score_percentage >= pass_percentage and critical_passed
+    
+    # Create stage result document
+    result_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": stage_result.session_id,
+        "candidate_id": session["candidate_id"],
+        "candidate_email": session["candidate_email"],
+        "candidate_name": session["candidate_name"],
+        "test_config_id": session["test_config_id"],
+        "stage": stage_result.stage,
+        "evaluations": [eval.dict() for eval in stage_result.evaluations],
+        "total_score": total_score,
+        "max_possible_score": max_possible_score,
+        "score_percentage": round(score_percentage, 2),
+        "pass_percentage": pass_percentage,
+        "passed": stage_passed,
+        "critical_passed": critical_passed,
+        "evaluated_by": current_user["email"],
+        "evaluated_by_name": current_user["full_name"],
+        "evaluation_notes": stage_result.evaluation_notes,
+        "evaluated_at": datetime.utcnow(),
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.stage_results.insert_one(result_doc)
+    
+    # Update multi-stage session
+    stage_update = {
+        f"stage_results.{stage_result.stage}.completed": True,
+        f"stage_results.{stage_result.stage}.passed": stage_passed,
+        f"stage_results.{stage_result.stage}.evaluated_by": current_user["email"],
+        f"stage_results.{stage_result.stage}.result_id": result_doc["id"]
+    }
+    
+    # Determine next stage or completion
+    if stage_passed:
+        if stage_result.stage == "yard":
+            stage_update["current_stage"] = "road"
+            stage_update["status"] = "yard_passed"
+        elif stage_result.stage == "road":
+            stage_update["current_stage"] = "completed"
+            stage_update["status"] = "completed"
+            stage_update["completed_at"] = datetime.utcnow()
+    else:
+        stage_update["status"] = "failed"
+        stage_update["failed_stage"] = stage_result.stage
+        stage_update["failed_at"] = datetime.utcnow()
+    
+    stage_update["updated_at"] = datetime.utcnow()
+    
+    await db.multi_stage_test_sessions.update_one(
+        {"id": stage_result.session_id},
+        {"$set": stage_update}
+    )
+    
+    return serialize_doc(result_doc)
+
+# Officer Assignment APIs
+@api_router.post("/multi-stage-tests/assign-officer")
+async def assign_officer_to_session(assignment_data: OfficerAssignment, current_user: dict = Depends(get_current_user)):
+    # Only Managers and Administrators can assign officers
+    if current_user["role"] not in ["Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers and administrators can assign officers"
+        )
+    
+    # Validate officer exists and has correct role
+    officer = await db.users.find_one({"email": assignment_data.officer_email, "role": "Driver Assessment Officer", "is_active": True})
+    if not officer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Assessment officer not found or inactive"
+        )
+    
+    # Get session
+    session = await db.multi_stage_test_sessions.find_one({"id": assignment_data.session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Multi-stage test session not found"
+        )
+    
+    if assignment_data.stage not in ["yard", "road"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only assign officers to 'yard' or 'road' stages"
+        )
+    
+    assignment_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": assignment_data.session_id,
+        "officer_email": assignment_data.officer_email,
+        "officer_name": officer["full_name"],
+        "stage": assignment_data.stage,
+        "assigned_by": current_user["email"],
+        "assigned_by_name": current_user["full_name"],
+        "notes": assignment_data.notes,
+        "assigned_at": datetime.utcnow(),
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.officer_assignments.insert_one(assignment_doc)
+    
+    # Update session with officer assignment
+    await db.multi_stage_test_sessions.update_one(
+        {"id": assignment_data.session_id},
+        {"$set": {
+            f"officer_assignments.{assignment_data.stage}": {
+                "officer_email": assignment_data.officer_email,
+                "officer_name": officer["full_name"],
+                "assigned_by": current_user["email"],
+                "assigned_at": datetime.utcnow()
+            },
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {"message": f"Officer assigned to {assignment_data.stage} stage successfully", "assignment_id": assignment_doc["id"]}
+
+@api_router.get("/multi-stage-tests/my-assignments")
+async def get_my_officer_assignments(current_user: dict = Depends(get_current_user)):
+    # Only assessment officers can view their assignments
+    if current_user["role"] != "Driver Assessment Officer":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only assessment officers can view assignments"
+        )
+    
+    # Get sessions where this officer is assigned
+    sessions = await db.multi_stage_test_sessions.find({
+        "$or": [
+            {"officer_assignments.yard.officer_email": current_user["email"]},
+            {"officer_assignments.road.officer_email": current_user["email"]}
+        ],
+        "status": {"$in": ["written_passed", "yard_passed"]}
+    }).to_list(1000)
+    
+    return serialize_doc(sessions)
+
+# Multi-Stage Test Results and Analytics
+@api_router.get("/multi-stage-tests/results")
+async def get_multi_stage_test_results(
+    candidate_id: Optional[str] = None,
+    test_config_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query_filter = {}
+    
+    if current_user["role"] == "Candidate":
+        # Candidates can only see their own results
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if candidate:
+            query_filter["candidate_id"] = candidate["id"]
+    else:
+        # Staff can filter by candidate_id
+        if candidate_id:
+            query_filter["candidate_id"] = candidate_id
+    
+    if test_config_id:
+        query_filter["test_config_id"] = test_config_id
+    
+    sessions = await db.multi_stage_test_sessions.find(query_filter).sort("created_at", -1).to_list(1000)
+    return serialize_doc(sessions)
+
+@api_router.get("/multi-stage-tests/analytics")
+async def get_multi_stage_test_analytics(current_user: dict = Depends(get_current_user)):
+    # Only staff can view analytics
+    if current_user["role"] == "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to test analytics"
+        )
+    
+    # Get overall statistics
+    total_sessions = await db.multi_stage_test_sessions.count_documents({})
+    active_sessions = await db.multi_stage_test_sessions.count_documents({"status": {"$in": ["active", "written_passed", "yard_passed"]}})
+    completed_sessions = await db.multi_stage_test_sessions.count_documents({"status": "completed"})
+    failed_sessions = await db.multi_stage_test_sessions.count_documents({"status": "failed"})
+    
+    # Get stage-specific statistics
+    written_passed = await db.multi_stage_test_sessions.count_documents({"stage_results.written.passed": True})
+    yard_passed = await db.multi_stage_test_sessions.count_documents({"stage_results.yard.passed": True})
+    road_passed = await db.multi_stage_test_sessions.count_documents({"stage_results.road.passed": True})
+    
+    # Get failure stages
+    failure_pipeline = [
+        {"$match": {"status": "failed"}},
+        {"$group": {"_id": "$failed_stage", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    failure_by_stage = await db.multi_stage_test_sessions.aggregate(failure_pipeline).to_list(100)
+    
+    return {
+        "total_sessions": total_sessions,
+        "active_sessions": active_sessions,
+        "completed_sessions": completed_sessions,
+        "failed_sessions": failed_sessions,
+        "completion_rate": (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0,
+        "stage_pass_rates": {
+            "written": (written_passed / total_sessions * 100) if total_sessions > 0 else 0,
+            "yard": (yard_passed / written_passed * 100) if written_passed > 0 else 0,
+            "road": (road_passed / yard_passed * 100) if yard_passed > 0 else 0
+        },
+        "failure_by_stage": serialize_doc(failure_by_stage)
+    }
+
+# Helper function for test access check (enhanced for multi-stage)
+async def check_test_access(test_config_id: str, current_user: dict, appointment_id: str = None) -> dict:
+    """Check if candidate can access test - enhanced for multi-stage tests"""
+    candidate = await db.candidates.find_one({"email": current_user["email"]})
+    if not candidate:
+        return {"access_granted": False, "message": "Candidate profile not found"}
+    
+    # Check identity verification
+    verification = await db.identity_verifications.find_one({"candidate_id": candidate["id"], "status": "verified"})
+    if not verification:
+        return {"access_granted": False, "message": "Identity verification required before taking test"}
+    
+    # Check appointment if provided
+    if appointment_id:
+        appointment = await db.appointments.find_one({"id": appointment_id, "candidate_id": candidate["id"]})
+        if not appointment:
+            return {"access_granted": False, "message": "Valid appointment required"}
+        
+        if appointment["status"] != "confirmed":
+            return {"access_granted": False, "message": "Appointment must be confirmed"}
+        
+        # Check if appointment date is today
+        appointment_date = datetime.strptime(appointment["appointment_date"], "%Y-%m-%d").date()
+        today = datetime.utcnow().date()
+        if appointment_date != today:
+            return {"access_granted": False, "message": "Test can only be taken on appointment date"}
+    
+    return {"access_granted": True, "message": "Access granted"}
+
+# =============================================================================
 # PHASE 5: APPOINTMENT & VERIFICATION SYSTEM APIS
 # =============================================================================
 
