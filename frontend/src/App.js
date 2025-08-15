@@ -5473,4 +5473,316 @@ const OfficerAssignments = () => {
   );
 };
 
+// My Assignments Component (for Officers)
+const MyAssignments = () => {
+  const [assignments, setAssignments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [evaluationCriteria, setEvaluationCriteria] = useState([]);
+  const [showEvaluationForm, setShowEvaluationForm] = useState(false);
+  const [currentEvaluation, setCurrentEvaluation] = useState(null);
+
+  const [evaluationResults, setEvaluationResults] = useState({});
+
+  useEffect(() => {
+    fetchMyAssignments();
+    fetchEvaluationCriteria();
+  }, []);
+
+  const fetchMyAssignments = async () => {
+    try {
+      const response = await axios.get(`${API}/multi-stage-tests/my-assignments`);
+      setAssignments(response.data);
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchEvaluationCriteria = async () => {
+    try {
+      const response = await axios.get(`${API}/evaluation-criteria`);
+      setEvaluationCriteria(response.data);
+    } catch (error) {
+      console.error('Error fetching evaluation criteria:', error);
+    }
+  };
+
+  const startEvaluation = (session, stage) => {
+    const stageCriteria = evaluationCriteria.filter(c => c.stage === stage && c.is_active);
+    setCurrentEvaluation({ session, stage, criteria: stageCriteria });
+    
+    // Initialize evaluation results
+    const initialResults = {};
+    stageCriteria.forEach(criterion => {
+      initialResults[criterion.id] = {
+        points_awarded: 0,
+        notes: ''
+      };
+    });
+    setEvaluationResults(initialResults);
+    setShowEvaluationForm(true);
+  };
+
+  const submitEvaluation = async () => {
+    try {
+      const { session, stage } = currentEvaluation;
+      
+      // Prepare evaluation data
+      const criteriaResults = Object.entries(evaluationResults).map(([criterionId, result]) => ({
+        criterion_id: criterionId,
+        points_awarded: result.points_awarded,
+        notes: result.notes
+      }));
+
+      await axios.post(`${API}/multi-stage-tests/evaluate-stage`, {
+        session_id: session.id,
+        stage: stage,
+        criteria_results: criteriaResults,
+        overall_notes: `${stage.charAt(0).toUpperCase() + stage.slice(1)} test evaluation completed`
+      });
+
+      alert('Evaluation submitted successfully!');
+      setShowEvaluationForm(false);
+      setCurrentEvaluation(null);
+      fetchMyAssignments();
+    } catch (error) {
+      console.error('Error submitting evaluation:', error);
+      alert(error.response?.data?.detail || 'Error submitting evaluation');
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'active': return 'bg-blue-100 text-blue-800';
+      case 'written_passed': return 'bg-green-100 text-green-800';
+      case 'yard_passed': return 'bg-green-100 text-green-800';
+      case 'completed': return 'bg-emerald-100 text-emerald-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  const getStageColor = (stage) => {
+    switch (stage) {
+      case 'yard': return 'bg-green-100 text-green-800';
+      case 'road': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">My Assignments</h1>
+            <p className="text-slate-600 mt-1">Test sessions assigned for evaluation</p>
+          </div>
+          <Badge variant="outline" className="px-3 py-1">
+            {assignments.length} Active Assignments
+          </Badge>
+        </div>
+
+        {/* Evaluation Form Modal */}
+        {showEvaluationForm && currentEvaluation && (
+          <Card className="border-2 border-blue-200">
+            <CardHeader className="bg-blue-50">
+              <CardTitle className="flex items-center justify-between">
+                <span>Evaluate {currentEvaluation.stage.charAt(0).toUpperCase() + currentEvaluation.stage.slice(1)} Test</span>
+                <Button variant="outline" size="sm" onClick={() => setShowEvaluationForm(false)}>
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                Candidate: {currentEvaluation.session.candidate_name} | Session: {currentEvaluation.session.id.slice(-6)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-6">
+                {currentEvaluation.criteria.map((criterion) => (
+                  <div key={criterion.id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="font-medium text-slate-800 flex items-center space-x-2">
+                          <span>{criterion.name}</span>
+                          {criterion.is_critical && (
+                            <Badge variant="destructive" className="text-xs">Critical</Badge>
+                          )}
+                        </h4>
+                        <p className="text-sm text-slate-600">{criterion.description}</p>
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        Max: {criterion.max_points} points
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Points Awarded</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={criterion.max_points}
+                          value={evaluationResults[criterion.id]?.points_awarded || 0}
+                          onChange={(e) => setEvaluationResults({
+                            ...evaluationResults,
+                            [criterion.id]: {
+                              ...evaluationResults[criterion.id],
+                              points_awarded: parseInt(e.target.value) || 0
+                            }
+                          })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Evaluation Notes</Label>
+                        <Textarea
+                          placeholder="Optional notes..."
+                          value={evaluationResults[criterion.id]?.notes || ''}
+                          onChange={(e) => setEvaluationResults({
+                            ...evaluationResults,
+                            [criterion.id]: {
+                              ...evaluationResults[criterion.id],
+                              notes: e.target.value
+                            }
+                          })}
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                  <Button variant="outline" onClick={() => setShowEvaluationForm(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={submitEvaluation}>
+                    Submit Evaluation
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {assignments.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <ClipboardCheck className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-slate-800 mb-2">No Active Assignments</h3>
+              <p className="text-slate-600">You don't have any test sessions assigned for evaluation at the moment.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6">
+            {assignments.map((session) => {
+              // Determine next stage to evaluate
+              const nextStage = session.status === 'written_passed' ? 'yard' : 'road';
+              
+              return (
+                <Card key={session.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center space-x-3">
+                          <span>Evaluation Assignment</span>
+                          <Badge className={getStageColor(nextStage)}>
+                            {nextStage.charAt(0).toUpperCase() + nextStage.slice(1)} Test
+                          </Badge>
+                          <Badge className={getStatusColor(session.status)}>
+                            {session.status.replace('_', ' ').toUpperCase()}
+                          </Badge>
+                        </CardTitle>
+                        <CardDescription>
+                          Candidate: {session.candidate_name} | Assigned: {new Date(session.created_at).toLocaleDateString()}
+                        </CardDescription>
+                      </div>
+                      <Button 
+                        onClick={() => startEvaluation(session, nextStage)}
+                        className="flex items-center space-x-2"
+                      >
+                        <ClipboardCheck className="h-4 w-4" />
+                        <span>Start Evaluation</span>
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Session Progress */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">Session Progress</h4>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="text-sm">Written Test: Passed</span>
+                          </div>
+                          {session.status === 'yard_passed' && (
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-sm">Yard Test: Passed</span>
+                            </div>
+                          )}
+                          <div className="flex items-center space-x-2">
+                            <Clock className="h-4 w-4 text-orange-600" />
+                            <span className="text-sm font-medium">
+                              {nextStage.charAt(0).toUpperCase() + nextStage.slice(1)} Test: Assigned to You
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Evaluation Criteria */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">Evaluation Criteria</h4>
+                        <div className="text-sm text-slate-600">
+                          {nextStage === 'yard' ? (
+                            <ul className="space-y-1">
+                              <li>• Reversing</li>
+                              <li>• Parallel Parking</li>
+                              <li>• Hill Start</li>
+                              <li>• Vehicle Control</li>
+                            </ul>
+                          ) : (
+                            <ul className="space-y-1">
+                              <li>• Use of Road</li>
+                              <li>• Three-Point Turns</li>
+                              <li>• Intersections</li>
+                              <li>• Traffic Rules</li>
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Candidate Information */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">Candidate Information</h4>
+                        <div className="text-sm text-slate-600 space-y-1">
+                          <p><span className="font-medium">Name:</span> {session.candidate_name}</p>
+                          <p><span className="font-medium">Session ID:</span> {session.id.slice(-8)}</p>
+                          <p><span className="font-medium">Test Date:</span> {new Date(session.created_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
