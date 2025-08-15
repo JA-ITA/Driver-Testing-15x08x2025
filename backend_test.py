@@ -2288,6 +2288,9 @@ class ITABackendTester:
             # Phase 6: Multi-Stage Testing System
             self.run_phase_6_tests()
             
+            # Phase 7: Special Tests & Resit Management System
+            self.run_phase_7_tests()
+            
         except Exception as e:
             print(f"💥 Critical error during testing: {str(e)}")
             return False
