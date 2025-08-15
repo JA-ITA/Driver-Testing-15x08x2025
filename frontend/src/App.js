@@ -8726,7 +8726,7 @@ const AdvancedReporting = () => {
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={dateRange.category} onValueChange={(value) => setDateRange({ ...dateRange, category: value })}>
+                <Select value={dateRange.category || "all"} onValueChange={(value) => setDateRange({ ...dateRange, category: value === "all" ? "" : value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
