@@ -326,7 +326,11 @@ metadata:
   run_ui: true
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Phase 5 Appointment Booking Interface"
+    - "Phase 5 My Appointments Interface"
+    - "Phase 5 Identity Verification Interface"
+    - "Phase 5 Schedule Management Interface"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
