@@ -59,6 +59,8 @@ class ITABackendTester:
                     response = requests.post(url, json=data, headers=headers, timeout=30)
             elif method == 'PUT':
                 response = requests.put(url, json=data, headers=headers, timeout=30)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers, timeout=30)
             else:
                 return False, {"error": f"Unsupported method: {method}"}
             
