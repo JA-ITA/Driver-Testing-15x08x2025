@@ -426,7 +426,8 @@ const DashboardLayout = ({ children }) => {
     if (user.role === 'Candidate') {
       return [
         ...baseItems,
-        { label: 'My Profile', path: '/profile', icon: User }
+        { label: 'My Profile', path: '/profile', icon: User },
+        { label: 'Take Test', path: '/tests', icon: Play }
       ];
     } else {
       const staffItems = [
@@ -440,18 +441,33 @@ const DashboardLayout = ({ children }) => {
         staffItems.push(
           { label: 'Test Categories', path: '/categories', icon: BookOpen },
           { label: 'Question Bank', path: '/questions', icon: FileText },
-          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle }
+          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle },
+          { label: 'Test Configurations', path: '/test-configs', icon: Settings },
+          { label: 'Test Management', path: '/test-management', icon: FileCheck }
         );
       } else if (user.role === 'Regional Director') {
         staffItems.push(
           { label: 'Question Bank', path: '/questions', icon: FileText },
-          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle }
+          { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle },
+          { label: 'Test Configurations', path: '/test-configs', icon: Settings },
+          { label: 'Test Management', path: '/test-management', icon: FileCheck }
         );
       } else if (user.role in ['Driver Assessment Officer', 'Manager']) {
         staffItems.push(
           { label: 'Question Bank', path: '/questions', icon: FileText },
           { label: 'Create Question', path: '/create-question', icon: Plus }
         );
+        
+        if (user.role === 'Manager') {
+          staffItems.push(
+            { label: 'Test Configurations', path: '/test-configs', icon: Settings },
+            { label: 'Test Management', path: '/test-management', icon: FileCheck }
+          );
+        } else {
+          staffItems.push(
+            { label: 'Test Management', path: '/test-management', icon: FileCheck }
+          );
+        }
       }
       
       return staffItems;
