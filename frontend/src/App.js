@@ -6474,4 +6474,1449 @@ const SpecialTestCategories = () => {
   );
 };
 
+// Special Test Configurations Component
+const SpecialTestConfigurations = () => {
+  const [configurations, setConfigurations] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [specialCategories, setSpecialCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(null);
+
+  const [newConfig, setNewConfig] = useState({
+    category_id: '',
+    special_category_id: '',
+    name: '',
+    description: '',
+    written_total_questions: 25,
+    written_pass_mark_percentage: 80,
+    written_time_limit_minutes: 40,
+    written_difficulty_distribution: { easy: 20, medium: 50, hard: 30 },
+    yard_pass_mark_percentage: 80,
+    road_pass_mark_percentage: 80,
+    requires_medical_certificate: false,
+    requires_background_check: false,
+    minimum_experience_years: null,
+    additional_documents: [],
+    is_active: true,
+    requires_officer_assignment: true
+  });
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [configsRes, categoriesRes, specialCatsRes] = await Promise.all([
+        axios.get(`${API}/special-test-configs`),
+        axios.get(`${API}/categories`),
+        axios.get(`${API}/special-test-categories`)
+      ]);
+      
+      setConfigurations(configsRes.data);
+      setCategories(categoriesRes.data);
+      setSpecialCategories(specialCatsRes.data);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const submitData = {
+        ...newConfig,
+        minimum_experience_years: newConfig.minimum_experience_years === '' ? null : parseInt(newConfig.minimum_experience_years)
+      };
+
+      if (editingConfig) {
+        await axios.put(`${API}/special-test-configs/${editingConfig.id}`, submitData);
+      } else {
+        await axios.post(`${API}/special-test-configs`, submitData);
+      }
+      
+      resetForm();
+      fetchData();
+    } catch (error) {
+      console.error('Error saving configuration:', error);
+      alert(error.response?.data?.detail || 'Error saving configuration');
+    }
+  };
+
+  const resetForm = () => {
+    setNewConfig({
+      category_id: '',
+      special_category_id: '',
+      name: '',
+      description: '',
+      written_total_questions: 25,
+      written_pass_mark_percentage: 80,
+      written_time_limit_minutes: 40,
+      written_difficulty_distribution: { easy: 20, medium: 50, hard: 30 },
+      yard_pass_mark_percentage: 80,
+      road_pass_mark_percentage: 80,
+      requires_medical_certificate: false,
+      requires_background_check: false,
+      minimum_experience_years: null,
+      additional_documents: [],
+      is_active: true,
+      requires_officer_assignment: true
+    });
+    setShowCreateForm(false);
+    setEditingConfig(null);
+  };
+
+  const handleEdit = (config) => {
+    setEditingConfig(config);
+    setNewConfig(config);
+    setShowCreateForm(true);
+  };
+
+  const addDocument = () => {
+    const document = prompt('Enter additional document requirement:');
+    if (document) {
+      setNewConfig({
+        ...newConfig,
+        additional_documents: [...newConfig.additional_documents, document]
+      });
+    }
+  };
+
+  const removeDocument = (index) => {
+    setNewConfig({
+      ...newConfig,
+      additional_documents: newConfig.additional_documents.filter((_, i) => i !== index)
+    });
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Special Test Configurations</h1>
+            <p className="text-slate-600 mt-1">Configure parameters for special driver tests</p>
+          </div>
+          <Button onClick={() => setShowCreateForm(true)} className="flex items-center space-x-2">
+            <Settings className="h-4 w-4" />
+            <span>Add Configuration</span>
+          </Button>
+        </div>
+
+        {/* Create/Edit Form */}
+        {showCreateForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingConfig ? 'Edit Configuration' : 'Create Special Test Configuration'}</CardTitle>
+              <CardDescription>Configure customizable parameters for special driver tests</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Configuration Name</Label>
+                    <Input
+                      id="name"
+                      value={newConfig.name}
+                      onChange={(e) => setNewConfig({...newConfig, name: e.target.value})}
+                      placeholder="e.g., PPV Standard Test"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category_id">Base Test Category</Label>
+                    <select
+                      id="category_id"
+                      value={newConfig.category_id}
+                      onChange={(e) => setNewConfig({...newConfig, category_id: e.target.value})}
+                      className="w-full p-2 border rounded-md"
+                      required
+                    >
+                      <option value="">Select base category</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="special_category_id">Special Test Type</Label>
+                    <select
+                      id="special_category_id"
+                      value={newConfig.special_category_id}
+                      onChange={(e) => setNewConfig({...newConfig, special_category_id: e.target.value})}
+                      className="w-full p-2 border rounded-md"
+                      required
+                    >
+                      <option value="">Select special type</option>
+                      {specialCategories.map((special) => (
+                        <option key={special.id} value={special.id}>{special.name} ({special.category_code})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="minimum_experience_years">Minimum Experience (Years)</Label>
+                    <Input
+                      id="minimum_experience_years"
+                      type="number"
+                      value={newConfig.minimum_experience_years || ''}
+                      onChange={(e) => setNewConfig({...newConfig, minimum_experience_years: e.target.value})}
+                      placeholder="e.g., 2"
+                      min="0"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newConfig.description}
+                    onChange={(e) => setNewConfig({...newConfig, description: e.target.value})}
+                    placeholder="Describe this configuration"
+                    rows={3}
+                  />
+                </div>
+
+                {/* Written Test Parameters */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-medium text-slate-800 mb-4">Written Test Parameters</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="written_total_questions">Total Questions</Label>
+                      <Input
+                        id="written_total_questions"
+                        type="number"
+                        value={newConfig.written_total_questions}
+                        onChange={(e) => setNewConfig({...newConfig, written_total_questions: parseInt(e.target.value)})}
+                        min="1"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="written_pass_mark_percentage">Pass Mark (%)</Label>
+                      <Input
+                        id="written_pass_mark_percentage"
+                        type="number"
+                        value={newConfig.written_pass_mark_percentage}
+                        onChange={(e) => setNewConfig({...newConfig, written_pass_mark_percentage: parseInt(e.target.value)})}
+                        min="1"
+                        max="100"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="written_time_limit_minutes">Time Limit (Minutes)</Label>
+                      <Input
+                        id="written_time_limit_minutes"
+                        type="number"
+                        value={newConfig.written_time_limit_minutes}
+                        onChange={(e) => setNewConfig({...newConfig, written_time_limit_minutes: parseInt(e.target.value)})}
+                        min="1"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Practical Test Parameters */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-medium text-slate-800 mb-4">Practical Test Parameters</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="yard_pass_mark_percentage">Yard Test Pass Mark (%)</Label>
+                      <Input
+                        id="yard_pass_mark_percentage"
+                        type="number"
+                        value={newConfig.yard_pass_mark_percentage}
+                        onChange={(e) => setNewConfig({...newConfig, yard_pass_mark_percentage: parseInt(e.target.value)})}
+                        min="1"
+                        max="100"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="road_pass_mark_percentage">Road Test Pass Mark (%)</Label>
+                      <Input
+                        id="road_pass_mark_percentage"
+                        type="number"
+                        value={newConfig.road_pass_mark_percentage}
+                        onChange={(e) => setNewConfig({...newConfig, road_pass_mark_percentage: parseInt(e.target.value)})}
+                        min="1"
+                        max="100"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Requirements */}
+                <div className="border rounded-lg p-4">
+                  <h3 className="font-medium text-slate-800 mb-4">Special Requirements</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newConfig.requires_medical_certificate}
+                        onChange={(e) => setNewConfig({...newConfig, requires_medical_certificate: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Requires Medical Certificate</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newConfig.requires_background_check}
+                        onChange={(e) => setNewConfig({...newConfig, requires_background_check: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Requires Background Check</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newConfig.requires_officer_assignment}
+                        onChange={(e) => setNewConfig({...newConfig, requires_officer_assignment: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Requires Officer Assignment</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newConfig.is_active}
+                        onChange={(e) => setNewConfig({...newConfig, is_active: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Active</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Additional Documents */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Additional Document Requirements</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addDocument}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Document
+                    </Button>
+                  </div>
+                  {newConfig.additional_documents.length > 0 && (
+                    <div className="space-y-2">
+                      {newConfig.additional_documents.map((doc, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                          <span className="text-sm">{doc}</span>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => removeDocument(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex space-x-2 pt-4">
+                  <Button type="submit">{editingConfig ? 'Update Configuration' : 'Create Configuration'}</Button>
+                  <Button type="button" variant="outline" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Configurations List */}
+        <div className="grid gap-6">
+          {configurations.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Settings className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Special Test Configurations</h3>
+                <p className="text-slate-600 mb-4">Create customized test configurations for special license categories.</p>
+                <Button onClick={() => setShowCreateForm(true)}>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Create First Configuration
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            configurations.map((config) => (
+              <Card key={config.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-3">
+                        <span>{config.name}</span>
+                        <Badge variant={config.is_active ? "default" : "secondary"}>
+                          {config.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </CardTitle>
+                      {config.description && (
+                        <CardDescription>{config.description}</CardDescription>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleEdit(config)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Written Test</h4>
+                      <div className="space-y-1 text-sm text-slate-600">
+                        <p>Questions: {config.written_total_questions}</p>
+                        <p>Pass Mark: {config.written_pass_mark_percentage}%</p>
+                        <p>Time Limit: {config.written_time_limit_minutes} mins</p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Practical Tests</h4>
+                      <div className="space-y-1 text-sm text-slate-600">
+                        <p>Yard Pass Mark: {config.yard_pass_mark_percentage}%</p>
+                        <p>Road Pass Mark: {config.road_pass_mark_percentage}%</p>
+                        {config.minimum_experience_years && (
+                          <p>Min Experience: {config.minimum_experience_years} years</p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Requirements</h4>
+                      <div className="space-y-1 text-sm text-slate-600">
+                        {config.requires_medical_certificate && <p>✓ Medical Certificate</p>}
+                        {config.requires_background_check && <p>✓ Background Check</p>}
+                        {config.requires_officer_assignment && <p>✓ Officer Assignment</p>}
+                        {config.additional_documents && config.additional_documents.length > 0 && (
+                          <p>+ {config.additional_documents.length} additional documents</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Resit Management Component (for Staff)
+const ResitManagement = () => {
+  const [resits, setResits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all'); // 'all', 'pending', 'scheduled', 'completed'
+
+  useEffect(() => {
+    fetchResits();
+  }, []);
+
+  const fetchResits = async () => {
+    try {
+      const response = await axios.get(`${API}/resits/all`);
+      setResits(response.data);
+    } catch (error) {
+      console.error('Error fetching resits:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const approveResit = async (resitId) => {
+    try {
+      await axios.put(`${API}/resits/${resitId}/approve`);
+      fetchResits(); // Refresh the list
+      alert('Resit approved successfully');
+    } catch (error) {
+      console.error('Error approving resit:', error);
+      alert(error.response?.data?.detail || 'Error approving resit');
+    }
+  };
+
+  const filteredResits = resits.filter(resit => {
+    if (filter === 'all') return true;
+    return resit.status === filter;
+  });
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Resit Management</h1>
+            <p className="text-slate-600 mt-1">Manage candidate resit requests and approvals</p>
+          </div>
+        </div>
+
+        {/* Filter Tabs */}
+        <div className="flex space-x-4 border-b">
+          {['all', 'pending', 'scheduled', 'completed'].map((status) => (
+            <button
+              key={status}
+              onClick={() => setFilter(status)}
+              className={`pb-2 px-1 font-medium text-sm border-b-2 transition-colors ${
+                filter === status
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+              <span className="ml-2 bg-slate-100 text-slate-600 px-2 py-1 rounded-full text-xs">
+                {status === 'all' ? resits.length : resits.filter(r => r.status === status).length}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Resits List */}
+        <div className="space-y-4">
+          {filteredResits.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <RefreshCw className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Resit Requests</h3>
+                <p className="text-slate-600">No resit requests found for the selected filter.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredResits.map((resit) => (
+              <Card key={resit.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-3">
+                        <span>Resit Request #{resit.id.slice(-8)}</span>
+                        <Badge className={getStatusColor(resit.status)}>
+                          {resit.status}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        Candidate ID: {resit.candidate_id} • Attempt #{resit.resit_attempt_number}
+                      </CardDescription>
+                    </div>
+                    {resit.status === 'pending' && (
+                      <Button onClick={() => approveResit(resit.id)} className="flex items-center space-x-2">
+                        <CheckCircle className="h-4 w-4" />
+                        <span>Approve</span>
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Failed Stages</h4>
+                      <div className="space-y-1">
+                        {resit.resit_stages?.map((stage) => (
+                          <Badge key={stage} variant="outline" className="mr-2">
+                            {stage}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Requested Schedule</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Date: {resit.requested_date}</p>
+                        <p>Time: {resit.requested_time_slot}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Request Details</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Original Session: {resit.original_session_id?.slice(-8)}</p>
+                        <p>Created: {new Date(resit.created_at).toLocaleDateString()}</p>
+                        {resit.reason && (
+                          <p className="mt-2">
+                            <span className="font-medium">Reason:</span> {resit.reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {resit.notes && (
+                    <div className="mt-4 p-3 bg-slate-50 rounded">
+                      <p className="text-sm text-slate-700">
+                        <span className="font-medium">Notes:</span> {resit.notes}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center space-x-4 text-sm text-slate-600">
+                    {resit.photo_recaptured && (
+                      <div className="flex items-center space-x-1">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span>Photo Recaptured</span>
+                      </div>
+                    )}
+                    {resit.identity_reverified && (
+                      <div className="flex items-center space-x-1">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span>Identity Reverified</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// My Resits Component (for Candidates)
+const MyResits = () => {
+  const [resits, setResits] = useState([]);
+  const [testSessions, setTestSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [selectedSession, setSelectedSession] = useState('');
+  
+  const [newResit, setNewResit] = useState({
+    original_session_id: '',
+    failed_stages: [],
+    requested_appointment_date: '',
+    requested_time_slot: '',
+    reason: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const [resitsRes, sessionsRes] = await Promise.all([
+        axios.get(`${API}/resits/my-resits`),
+        axios.get(`${API}/multi-stage-test-sessions/my-sessions`)
+      ]);
+      
+      setResits(resitsRes.data);
+      // Filter sessions that have failed stages
+      const failedSessions = sessionsRes.data.filter(session => 
+        session.status === 'failed' || 
+        (session.written_score !== undefined && session.written_score < 75) ||
+        session.yard_passed === false ||
+        session.road_passed === false
+      );
+      setTestSessions(failedSessions);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSessionChange = (sessionId) => {
+    setSelectedSession(sessionId);
+    const session = testSessions.find(s => s.id === sessionId);
+    if (session) {
+      const failedStages = [];
+      if (session.written_score !== undefined && session.written_score < 75) {
+        failedStages.push('written');
+      }
+      if (session.yard_passed === false) {
+        failedStages.push('yard');
+      }
+      if (session.road_passed === false) {
+        failedStages.push('road');
+      }
+      
+      setNewResit({
+        ...newResit,
+        original_session_id: sessionId,
+        failed_stages: failedStages
+      });
+    }
+  };
+
+  const handleStageToggle = (stage) => {
+    const stages = newResit.failed_stages.includes(stage)
+      ? newResit.failed_stages.filter(s => s !== stage)
+      : [...newResit.failed_stages, stage];
+    
+    setNewResit({...newResit, failed_stages: stages});
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/resits/request`, newResit);
+      setNewResit({
+        original_session_id: '',
+        failed_stages: [],
+        requested_appointment_date: '',
+        requested_time_slot: '',
+        reason: '',
+        notes: ''
+      });
+      setShowRequestForm(false);
+      setSelectedSession('');
+      fetchData();
+      alert('Resit request submitted successfully');
+    } catch (error) {
+      console.error('Error submitting resit request:', error);
+      alert(error.response?.data?.detail || 'Error submitting request');
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'bg-green-100 text-green-800';
+      case 'failed': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">My Resits</h1>
+            <p className="text-slate-600 mt-1">Request and track resits for failed test stages</p>
+          </div>
+          {testSessions.length > 0 && (
+            <Button onClick={() => setShowRequestForm(true)} className="flex items-center space-x-2">
+              <RefreshCw className="h-4 w-4" />
+              <span>Request Resit</span>
+            </Button>
+          )}
+        </div>
+
+        {/* Request Resit Form */}
+        {showRequestForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Request Resit</CardTitle>
+              <CardDescription>Request to retake failed stages of your test</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="session">Select Test Session</Label>
+                  <select
+                    id="session"
+                    value={selectedSession}
+                    onChange={(e) => handleSessionChange(e.target.value)}
+                    className="w-full p-2 border rounded-md"
+                    required
+                  >
+                    <option value="">Select a failed test session</option>
+                    {testSessions.map((session) => (
+                      <option key={session.id} value={session.id}>
+                        Session {session.id.slice(-8)} - {new Date(session.created_at).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {newResit.failed_stages.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Failed Stages to Resit</Label>
+                    <div className="space-y-2">
+                      {['written', 'yard', 'road'].map((stage) => (
+                        <label key={stage} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={newResit.failed_stages.includes(stage)}
+                            onChange={() => handleStageToggle(stage)}
+                            className="rounded"
+                          />
+                          <span className="text-sm capitalize">{stage} Test</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="date">Preferred Date</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={newResit.requested_appointment_date}
+                      onChange={(e) => setNewResit({...newResit, requested_appointment_date: e.target.value})}
+                      min={new Date().toISOString().split('T')[0]}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="time_slot">Preferred Time Slot</Label>
+                    <Input
+                      id="time_slot"
+                      value={newResit.requested_time_slot}
+                      onChange={(e) => setNewResit({...newResit, requested_time_slot: e.target.value})}
+                      placeholder="e.g., 09:00-10:00"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reason">Reason for Resit</Label>
+                  <Textarea
+                    id="reason"
+                    value={newResit.reason}
+                    onChange={(e) => setNewResit({...newResit, reason: e.target.value})}
+                    placeholder="Explain why you need to resit these stages"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Additional Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={newResit.notes}
+                    onChange={(e) => setNewResit({...newResit, notes: e.target.value})}
+                    placeholder="Any additional information"
+                    rows={2}
+                  />
+                </div>
+
+                <div className="flex space-x-2">
+                  <Button type="submit">Submit Request</Button>
+                  <Button type="button" variant="outline" onClick={() => {
+                    setShowRequestForm(false);
+                    setSelectedSession('');
+                    setNewResit({
+                      original_session_id: '',
+                      failed_stages: [],
+                      requested_appointment_date: '',
+                      requested_time_slot: '',
+                      reason: '',
+                      notes: ''
+                    });
+                  }}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Resit Requests */}
+        <div className="space-y-4">
+          {resits.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <RefreshCw className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Resit Requests</h3>
+                <p className="text-slate-600 mb-4">
+                  {testSessions.length === 0 
+                    ? "You don't have any failed test sessions that can be resit."
+                    : "You haven't requested any resits yet."
+                  }
+                </p>
+                {testSessions.length > 0 && (
+                  <Button onClick={() => setShowRequestForm(true)}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Request Your First Resit
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            resits.map((resit) => (
+              <Card key={resit.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-3">
+                        <span>Resit Request #{resit.id.slice(-8)}</span>
+                        <Badge className={getStatusColor(resit.status)}>
+                          {resit.status}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        Attempt #{resit.resit_attempt_number} • Submitted {new Date(resit.created_at).toLocaleDateString()}
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Stages to Resit</h4>
+                      <div className="space-y-1">
+                        {resit.resit_stages?.map((stage) => (
+                          <Badge key={stage} variant="outline" className="mr-2">
+                            {stage}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Requested Schedule</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Date: {resit.requested_date}</p>
+                        <p>Time: {resit.requested_time_slot}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Status</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Current: {resit.status}</p>
+                        {resit.approved_at && (
+                          <p>Approved: {new Date(resit.approved_at).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {resit.reason && (
+                    <div className="mt-4 p-3 bg-slate-50 rounded">
+                      <p className="text-sm text-slate-700">
+                        <span className="font-medium">Reason:</span> {resit.reason}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center space-x-4 text-sm text-slate-600">
+                    {resit.photo_recaptured && (
+                      <div className="flex items-center space-x-1">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span>Photo Recaptured</span>
+                      </div>
+                    )}
+                    {resit.identity_reverified && (
+                      <div className="flex items-center space-x-1">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span>Identity Reverified</span>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Reschedule Appointment Component (for Candidates)
+const RescheduleAppointment = () => {
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showRescheduleForm, setShowRescheduleForm] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  
+  const [rescheduleData, setRescheduleData] = useState({
+    new_date: '',
+    new_time_slot: '',
+    reason: '',
+    notes: ''
+  });
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      const response = await axios.get(`${API}/appointments/my-appointments`);
+      // Filter only appointments that can be rescheduled (scheduled, confirmed)
+      const reschedulableAppointments = response.data.filter(apt => 
+        ['scheduled', 'confirmed'].includes(apt.status)
+      );
+      setAppointments(reschedulableAppointments);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReschedule = (appointment) => {
+    setSelectedAppointment(appointment);
+    setShowRescheduleForm(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/appointments/${selectedAppointment.id}/reschedule`, {
+        appointment_id: selectedAppointment.id,
+        ...rescheduleData
+      });
+      
+      setRescheduleData({
+        new_date: '',
+        new_time_slot: '',
+        reason: '',
+        notes: ''
+      });
+      setShowRescheduleForm(false);
+      setSelectedAppointment(null);
+      fetchAppointments();
+      alert('Appointment rescheduled successfully');
+    } catch (error) {
+      console.error('Error rescheduling appointment:', error);
+      alert(error.response?.data?.detail || 'Error rescheduling appointment');
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'scheduled': return 'bg-blue-100 text-blue-800';
+      case 'confirmed': return 'bg-green-100 text-green-800';
+      case 'cancelled': return 'bg-red-100 text-red-800';
+      case 'completed': return 'bg-slate-100 text-slate-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Reschedule Appointment</h1>
+            <p className="text-slate-600 mt-1">Change the date and time of your test appointments</p>
+          </div>
+        </div>
+
+        {/* Reschedule Form */}
+        {showRescheduleForm && selectedAppointment && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Reschedule Appointment</CardTitle>
+              <CardDescription>
+                Current appointment: {selectedAppointment.appointment_date} at {selectedAppointment.time_slot}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new_date">New Date</Label>
+                    <Input
+                      id="new_date"
+                      type="date"
+                      value={rescheduleData.new_date}
+                      onChange={(e) => setRescheduleData({...rescheduleData, new_date: e.target.value})}
+                      min={new Date().toISOString().split('T')[0]}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new_time_slot">New Time Slot</Label>
+                    <Input
+                      id="new_time_slot"
+                      value={rescheduleData.new_time_slot}
+                      onChange={(e) => setRescheduleData({...rescheduleData, new_time_slot: e.target.value})}
+                      placeholder="e.g., 09:00-10:00"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="reason">Reason for Rescheduling</Label>
+                  <Textarea
+                    id="reason"
+                    value={rescheduleData.reason}
+                    onChange={(e) => setRescheduleData({...rescheduleData, reason: e.target.value})}
+                    placeholder="Please explain why you need to reschedule"
+                    rows={3}
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Additional Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={rescheduleData.notes}
+                    onChange={(e) => setRescheduleData({...rescheduleData, notes: e.target.value})}
+                    placeholder="Any additional information"
+                    rows={2}
+                  />
+                </div>
+
+                <div className="flex space-x-2">
+                  <Button type="submit">Reschedule</Button>
+                  <Button type="button" variant="outline" onClick={() => {
+                    setShowRescheduleForm(false);
+                    setSelectedAppointment(null);
+                    setRescheduleData({
+                      new_date: '',
+                      new_time_slot: '',
+                      reason: '',
+                      notes: ''
+                    });
+                  }}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Appointments List */}
+        <div className="space-y-4">
+          {appointments.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <History className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Appointments to Reschedule</h3>
+                <p className="text-slate-600">You don't have any scheduled appointments that can be rescheduled.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            appointments.map((appointment) => (
+              <Card key={appointment.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-3">
+                        <span>Appointment #{appointment.id.slice(-8)}</span>
+                        <Badge className={getStatusColor(appointment.status)}>
+                          {appointment.status}
+                        </Badge>
+                      </CardTitle>
+                      <CardDescription>
+                        {appointment.appointment_date} at {appointment.time_slot}
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      onClick={() => handleReschedule(appointment)}
+                      className="flex items-center space-x-2"
+                    >
+                      <History className="h-4 w-4" />
+                      <span>Reschedule</span>
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Test Details</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Configuration: {appointment.test_config_name || 'Standard Test'}</p>
+                        <p>Location: Test Center</p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Current Schedule</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Date: {appointment.appointment_date}</p>
+                        <p>Time: {appointment.time_slot}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-2">Status</h4>
+                      <div className="text-sm text-slate-600">
+                        <p>Current: {appointment.status}</p>
+                        <p>Booked: {new Date(appointment.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {appointment.notes && (
+                    <div className="mt-4 p-3 bg-slate-50 rounded">
+                      <p className="text-sm text-slate-700">
+                        <span className="font-medium">Notes:</span> {appointment.notes}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Failed Stages Analytics Component (for Admin)
+const FailedStagesAnalytics = () => {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, []);
+
+  const fetchAnalytics = async () => {
+    try {
+      const response = await axios.get(`${API}/failed-stages/analytics`);
+      setAnalytics(response.data);
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const stageStats = analytics?.stage_failure_stats || [];
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Failed Stages Analytics</h1>
+          <p className="text-slate-600 mt-1">Analysis of test stage failures and resit performance</p>
+        </div>
+
+        {/* Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Total Resit Requests</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics?.total_resit_requests || 0}</p>
+                </div>
+                <RefreshCw className="h-8 w-8 text-blue-600" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Successful Resits</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics?.successful_resits || 0}</p>
+                </div>
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Resit Success Rate</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics?.resit_success_rate?.toFixed(1) || 0}%</p>
+                </div>
+                <BarChart3 className="h-8 w-8 text-purple-600" />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600">Total Failure Records</p>
+                  <p className="text-2xl font-bold text-slate-800">{stageStats.reduce((sum, stat) => sum + stat.total_failures, 0)}</p>
+                </div>
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Stage Failure Statistics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Stage Failure Statistics</CardTitle>
+            <CardDescription>Breakdown of failures by test stage</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {stageStats.length === 0 ? (
+              <div className="text-center py-8">
+                <AlertTriangle className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <p className="text-slate-600">No failure statistics available yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {stageStats.map((stat) => (
+                  <div key={stat._id} className="border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-medium text-slate-800 capitalize">{stat._id} Test</h3>
+                      <Badge variant="outline" className="text-red-600">
+                        {stat.total_failures} failures
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm text-slate-600">Total Failures</p>
+                        <p className="text-lg font-semibold text-slate-800">{stat.total_failures}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-600">Unique Candidates</p>
+                        <p className="text-lg font-semibold text-slate-800">{stat.unique_candidates}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-600">Average Score</p>
+                        <p className="text-lg font-semibold text-slate-800">
+                          {stat.avg_score ? `${stat.avg_score.toFixed(1)}%` : 'N/A'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Progress bar showing failure rate */}
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
+                        <span>Failure Impact</span>
+                        <span>{stat.unique_candidates} candidates affected</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-2">
+                        <div 
+                          className="bg-red-500 h-2 rounded-full"
+                          style={{
+                            width: `${Math.min((stat.total_failures / Math.max(...stageStats.map(s => s.total_failures))) * 100, 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Resit Performance Summary */}
+        {analytics && analytics.total_resit_requests > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Resit Performance Summary</CardTitle>
+              <CardDescription>Overall resit management performance</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Resit Overview</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Total Requests:</span>
+                      <span className="font-medium">{analytics.total_resit_requests}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Successful:</span>
+                      <span className="font-medium text-green-600">{analytics.successful_resits}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-600">Success Rate:</span>
+                      <span className="font-medium">{analytics.resit_success_rate.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Performance Indicator</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
+                        <span>Resit Success Rate</span>
+                        <span>{analytics.resit_success_rate.toFixed(1)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200 rounded-full h-3">
+                        <div 
+                          className={`h-3 rounded-full ${
+                            analytics.resit_success_rate >= 80 ? 'bg-green-500' :
+                            analytics.resit_success_rate >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{width: `${Math.min(analytics.resit_success_rate, 100)}%`}}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1">
+                        {analytics.resit_success_rate >= 80 ? 'Excellent' :
+                         analytics.resit_success_rate >= 60 ? 'Good' : 'Needs Improvement'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
