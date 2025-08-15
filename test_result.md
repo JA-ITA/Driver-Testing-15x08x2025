@@ -428,7 +428,12 @@ metadata:
   run_ui: true
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Phase 6 Multi-Stage Test Configuration Interface"
+    - "Phase 6 Evaluation Criteria Management Interface"
+    - "Phase 6 Officer Assignment Interface"
+    - "Phase 6 Officer Assignments (My Assignments Interface)"
+    - "Phase 6 Multi-Stage Analytics Dashboard"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
