@@ -2259,6 +2259,341 @@ class ITABackendTester:
         except Exception as e:
             print(f"💥 Error during Phase 7 testing: {str(e)}")
 
+    # =============================================================================
+    # USER MANAGEMENT API TESTS
+    # =============================================================================
+
+    def test_user_creation_api(self):
+        """Test User Creation API (POST /api/admin/users)"""
+        print("👥 Testing User Creation API")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for User Creation", False, "Admin login failed")
+            return
+        
+        # Test creating users with different roles
+        test_users = [
+            {
+                "email": "manager.test@ita.gov",
+                "password": "manager123",
+                "full_name": "Test Manager",
+                "role": "Manager",
+                "is_active": True
+            },
+            {
+                "email": "officer.test@ita.gov", 
+                "password": "officer123",
+                "full_name": "Test Assessment Officer",
+                "role": "Driver Assessment Officer",
+                "is_active": True
+            },
+            {
+                "email": "director.test@ita.gov",
+                "password": "director123", 
+                "full_name": "Test Regional Director",
+                "role": "Regional Director",
+                "is_active": True
+            },
+            {
+                "email": "candidate.test@example.com",
+                "password": "candidate123",
+                "full_name": "Test Candidate User",
+                "role": "Candidate",
+                "is_active": True
+            }
+        ]
+        
+        self.created_test_users = []
+        
+        for user_data in test_users:
+            success, response = self.make_request('POST', 'admin/users', user_data,
+                                                token=self.tokens['admin'], expected_status=200)
+            self.log_test(f"Create User: {user_data['role']}", success,
+                         f"User ID: {response.get('user_id', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                self.created_test_users.append({**user_data, 'id': response.get('user_id')})
+        
+        # Test email validation - duplicate email
+        duplicate_user = {
+            "email": "manager.test@ita.gov",  # Same as first user
+            "password": "duplicate123",
+            "full_name": "Duplicate User",
+            "role": "Manager",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'admin/users', duplicate_user,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Create Duplicate Email User (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test invalid role validation
+        invalid_role_user = {
+            "email": "invalid.role@test.com",
+            "password": "invalid123",
+            "full_name": "Invalid Role User",
+            "role": "InvalidRole",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'admin/users', invalid_role_user,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Create Invalid Role User (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test required field validation - missing email
+        missing_email_user = {
+            "password": "test123",
+            "full_name": "Missing Email User",
+            "role": "Manager",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'admin/users', missing_email_user,
+                                            token=self.tokens['admin'], expected_status=422)
+        self.log_test("Create User Missing Email (Should Fail)", success,
+                     f"Correctly rejected validation error" if success else f"Unexpected: {response}")
+
+    def test_user_listing_api(self):
+        """Test User Listing API (GET /api/admin/users)"""
+        print("📋 Testing User Listing API")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for User Listing", False, "Admin login failed")
+            return
+        
+        # Test getting all users (default behavior)
+        success, response = self.make_request('GET', 'admin/users', token=self.tokens['admin'])
+        self.log_test("Get All Users", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} users" if success else f"Error: {response}")
+        
+        if success and isinstance(response, list):
+            # Verify no sensitive data is returned
+            for user in response:
+                if 'hashed_password' in user:
+                    self.log_test("Password Security Check", False, "Hashed password exposed in user listing")
+                    break
+            else:
+                self.log_test("Password Security Check", True, "No sensitive password data exposed")
+        
+        # Test including deleted users
+        success, response = self.make_request('GET', 'admin/users?include_deleted=true', 
+                                            token=self.tokens['admin'])
+        self.log_test("Get All Users Including Deleted", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} users (including deleted)" if success else f"Error: {response}")
+        
+        # Test role-based access control - only Administrators should access
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'admin/users',
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Access to User List (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'admin/users',
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to User List (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_user_update_api(self):
+        """Test User Update API (PUT /api/admin/users/{user_id})"""
+        print("✏️ Testing User Update API")
+        
+        if 'admin' not in self.tokens or not hasattr(self, 'created_test_users') or not self.created_test_users:
+            self.log_test("Prerequisites Missing for User Update", False, "Admin token or test users missing")
+            return
+        
+        test_user = self.created_test_users[0]  # Use first created user
+        user_id = test_user['id']
+        
+        # Test updating user profile information
+        update_data = {
+            "full_name": "Updated Test Manager",
+            "is_active": False
+        }
+        
+        success, response = self.make_request('PUT', f'admin/users/{user_id}', update_data,
+                                            token=self.tokens['admin'])
+        self.log_test("Update User Profile", success,
+                     f"User updated successfully" if success else f"Error: {response}")
+        
+        # Test password update
+        password_update = {
+            "password": "newpassword123"
+        }
+        
+        success, response = self.make_request('PUT', f'admin/users/{user_id}', password_update,
+                                            token=self.tokens['admin'])
+        self.log_test("Update User Password", success,
+                     f"Password updated successfully" if success else f"Error: {response}")
+        
+        # Test role change
+        role_update = {
+            "role": "Regional Director"
+        }
+        
+        success, response = self.make_request('PUT', f'admin/users/{user_id}', role_update,
+                                            token=self.tokens['admin'])
+        self.log_test("Update User Role", success,
+                     f"Role updated successfully" if success else f"Error: {response}")
+        
+        # Test updating non-existent user
+        fake_user_id = str(uuid.uuid4())
+        update_data = {
+            "full_name": "Non-existent User"
+        }
+        
+        success, response = self.make_request('PUT', f'admin/users/{fake_user_id}', update_data,
+                                            token=self.tokens['admin'], expected_status=404)
+        self.log_test("Update Non-existent User (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized update
+        if 'officer' in self.tokens:
+            success, response = self.make_request('PUT', f'admin/users/{user_id}', update_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Update User (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_user_deletion_and_restoration_apis(self):
+        """Test User Deletion and Restoration APIs"""
+        print("🗑️ Testing User Deletion and Restoration APIs")
+        
+        if 'admin' not in self.tokens or not hasattr(self, 'created_test_users') or not self.created_test_users:
+            self.log_test("Prerequisites Missing for User Deletion", False, "Admin token or test users missing")
+            return
+        
+        # Use second test user for deletion (to avoid deleting the first one we updated)
+        if len(self.created_test_users) > 1:
+            test_user = self.created_test_users[1]
+            user_id = test_user['id']
+            
+            # Test soft deletion
+            success, response = self.make_request('DELETE', f'admin/users/{user_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Soft Delete User", success,
+                         f"User deleted successfully" if success else f"Error: {response}")
+            
+            # Verify user is soft deleted (should appear in deleted users list)
+            success, response = self.make_request('GET', 'admin/users?include_deleted=true',
+                                                token=self.tokens['admin'])
+            if success and isinstance(response, list):
+                deleted_user = next((u for u in response if u.get('id') == user_id and u.get('is_deleted')), None)
+                self.log_test("Verify User Soft Deleted", deleted_user is not None,
+                             f"User found in deleted users list" if deleted_user else "User not found in deleted list")
+            
+            # Test user restoration
+            success, response = self.make_request('POST', f'admin/users/{user_id}/restore',
+                                                token=self.tokens['admin'])
+            self.log_test("Restore Deleted User", success,
+                         f"User restored successfully" if success else f"Error: {response}")
+            
+            # Verify user is restored (should appear in active users list)
+            success, response = self.make_request('GET', 'admin/users', token=self.tokens['admin'])
+            if success and isinstance(response, list):
+                restored_user = next((u for u in response if u.get('id') == user_id and not u.get('is_deleted')), None)
+                self.log_test("Verify User Restored", restored_user is not None,
+                             f"User found in active users list" if restored_user else "User not found in active list")
+        
+        # Test users cannot delete themselves
+        admin_user_id = self.users['admin'].get('id')
+        if admin_user_id:
+            success, response = self.make_request('DELETE', f'admin/users/{admin_user_id}',
+                                                token=self.tokens['admin'], expected_status=400)
+            self.log_test("Admin Delete Self (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test deleting non-existent user
+        fake_user_id = str(uuid.uuid4())
+        success, response = self.make_request('DELETE', f'admin/users/{fake_user_id}',
+                                            token=self.tokens['admin'], expected_status=404)
+        self.log_test("Delete Non-existent User (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized deletion
+        if 'officer' in self.tokens and len(self.created_test_users) > 2:
+            test_user_id = self.created_test_users[2]['id']
+            success, response = self.make_request('DELETE', f'admin/users/{test_user_id}',
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Delete User (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized restoration
+        if 'officer' in self.tokens and len(self.created_test_users) > 1:
+            test_user_id = self.created_test_users[1]['id']
+            success, response = self.make_request('POST', f'admin/users/{test_user_id}/restore',
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Restore User (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_authorization_comprehensive(self):
+        """Test comprehensive authorization for User Management APIs"""
+        print("🔐 Testing Comprehensive Authorization")
+        
+        # Create test users with different roles for authorization testing
+        test_roles = ["Manager", "Driver Assessment Officer", "Candidate"]
+        role_tokens = {}
+        
+        if 'admin' in self.tokens:
+            for role in test_roles:
+                user_data = {
+                    "email": f"auth.test.{role.lower().replace(' ', '.')}@test.com",
+                    "password": "authtest123",
+                    "full_name": f"Auth Test {role}",
+                    "role": role,
+                    "is_active": True
+                }
+                
+                # Create user
+                success, response = self.make_request('POST', 'admin/users', user_data,
+                                                    token=self.tokens['admin'])
+                if success:
+                    # Login as the new user
+                    login_data = {
+                        'username': user_data['email'],
+                        'password': user_data['password']
+                    }
+                    
+                    login_success, login_response = self.make_request('POST', 'auth/login', login_data)
+                    if login_success:
+                        role_tokens[role] = login_response.get('access_token')
+        
+        # Test each role's access to User Management APIs
+        test_endpoints = [
+            ('POST', 'admin/users', {"email": "test@test.com", "password": "test123", "full_name": "Test", "role": "Candidate"}),
+            ('GET', 'admin/users', None),
+            ('PUT', 'admin/users/fake-id', {"full_name": "Updated"}),
+            ('DELETE', 'admin/users/fake-id', None),
+            ('POST', 'admin/users/fake-id/restore', None)
+        ]
+        
+        for role, token in role_tokens.items():
+            for method, endpoint, data in test_endpoints:
+                success, response = self.make_request(method, endpoint, data, token=token, expected_status=403)
+                self.log_test(f"{role} Access to {method} {endpoint} (Should Fail)", success,
+                             f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected access granted")
+        
+        # Test without authentication
+        for method, endpoint, data in test_endpoints:
+            success, response = self.make_request(method, endpoint, data, expected_status=401)
+            self.log_test(f"Unauthenticated Access to {method} {endpoint} (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected access granted")
+
+    def run_user_management_tests(self):
+        """Run all User Management API tests"""
+        print("🚀 Running User Management API Tests")
+        print("=" * 80)
+        
+        try:
+            self.test_user_creation_api()
+            self.test_user_listing_api()
+            self.test_user_update_api()
+            self.test_user_deletion_and_restoration_apis()
+            self.test_authorization_comprehensive()
+        except Exception as e:
+            print(f"💥 Error during User Management testing: {str(e)}")
+
     def run_all_tests(self):
         """Run all backend tests"""
         print("🧪 Starting Comprehensive Backend API Testing")
