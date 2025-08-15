@@ -506,6 +506,11 @@ test_plan:
     - "Phase 6 Officer Assignment Interface"
     - "Phase 6 Officer Assignments (My Assignments Interface)"
     - "Phase 6 Multi-Stage Analytics Dashboard"
+    - "Phase 7 Special Test Configurations Interface"
+    - "Phase 7 Resit Management Interface"
+    - "Phase 7 My Resits Interface"
+    - "Phase 7 Reschedule Appointment Interface"
+    - "Phase 7 Failed Stages Analytics Interface"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
