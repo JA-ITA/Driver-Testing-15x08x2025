@@ -8,6 +8,7 @@ import requests
 import sys
 import json
 import base64
+import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 
