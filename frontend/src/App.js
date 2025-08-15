@@ -1444,12 +1444,12 @@ const QuestionBank = () => {
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-4">
               <div className="flex-1 min-w-48">
-                <Select value={filter.category_id} onValueChange={(value) => setFilter({ ...filter, category_id: value })}>
+                <Select value={filter.category_id || "all"} onValueChange={(value) => setFilter({ ...filter, category_id: value === "all" ? "" : value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Categories</SelectItem>
+                    <SelectItem value="all">All Categories</SelectItem>
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         {category.name}
@@ -1459,12 +1459,12 @@ const QuestionBank = () => {
                 </Select>
               </div>
               <div className="flex-1 min-w-48">
-                <Select value={filter.status} onValueChange={(value) => setFilter({ ...filter, status: value })}>
+                <Select value={filter.status || "all"} onValueChange={(value) => setFilter({ ...filter, status: value === "all" ? "" : value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="pending">Pending</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
