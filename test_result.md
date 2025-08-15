@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Create Phase 5: Appointment & Verification System for Island Traffic Authority Driver's License Testing System. Phase 5 includes appointment booking system, identity verification interface, photo capture functionality, and appointment management. Enhanced admin capabilities for user/candidate management with delete/restore functionality."
+user_problem_statement: "Continue building the Driver's License Testing System from previous phases. Phase 6: Multi-Stage Testing Process - Expand the testing system to handle Driver's License multi-stage tests: Written Test (20 questions, 75% pass), Competency Yard Test (Reversing, Parallel Parking, Hill Start), and Road Test (Use of Road, Three-Point Turns, Intersections). Include stage-specific results and progression logic with sequential completion (Written → Yard → Road), independent retake capability, checklist-based evaluation by officers, and admin-configurable evaluation criteria."
 
 backend:
   - task: "Question Bank Management API"
