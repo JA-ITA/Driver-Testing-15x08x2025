@@ -453,7 +453,12 @@ const DashboardLayout = ({ children }) => {
           { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle },
           { label: 'Test Configurations', path: '/test-configs', icon: Settings },
           { label: 'Test Management', path: '/test-management', icon: FileCheck },
-          { label: 'Schedule Management', path: '/schedule-management', icon: Clock }
+          { label: 'Schedule Management', path: '/schedule-management', icon: Clock },
+          // Phase 6: Multi-Stage Testing System
+          { label: 'Multi-Stage Tests', path: '/multi-stage-configs', icon: Layers },
+          { label: 'Evaluation Criteria', path: '/evaluation-criteria', icon: Target },
+          { label: 'Officer Assignments', path: '/officer-assignments', icon: UserCheck },
+          { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 }
         );
       } else if (user.role === 'Regional Director') {
         staffItems.push(
@@ -471,11 +476,16 @@ const DashboardLayout = ({ children }) => {
         if (user.role === 'Manager') {
           staffItems.push(
             { label: 'Test Configurations', path: '/test-configs', icon: Settings },
-            { label: 'Test Management', path: '/test-management', icon: FileCheck }
+            { label: 'Test Management', path: '/test-management', icon: FileCheck },
+            // Phase 6: Manager access to officer assignments and analytics
+            { label: 'Officer Assignments', path: '/officer-assignments', icon: UserCheck },
+            { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 }
           );
         } else {
           staffItems.push(
-            { label: 'Test Management', path: '/test-management', icon: FileCheck }
+            { label: 'Test Management', path: '/test-management', icon: FileCheck },
+            // Phase 6: Officer access to their assignments and evaluations
+            { label: 'My Assignments', path: '/my-assignments', icon: ClipboardCheck }
           );
         }
       }
