@@ -6,7 +6,7 @@ Fix test session issue by creating and approving enough questions
 import requests
 import json
 
-BASE_URL = "https://drivingexam-flow.preview.emergentagent.com/api"
+BASE_URL = "https://retry-system.preview.emergentagent.com/api"
 
 def login_admin():
     """Login as admin"""
