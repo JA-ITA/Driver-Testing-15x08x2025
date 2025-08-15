@@ -650,6 +650,353 @@ class ITABackendTester:
         # In a real scenario, we would test with actual JSON/CSV files
         self.log_test("Bulk Upload Test", True, "Bulk upload endpoint exists (file upload testing requires actual files)")
 
+    def test_test_configurations(self):
+        """Test Phase 4: Test Configuration Management"""
+        print("⚙️ Testing Phase 4: Test Configuration Management")
+        
+        if 'admin' not in self.tokens or not hasattr(self, 'categories') or not self.categories:
+            self.log_test("Prerequisites Missing for Test Configs", False, "Admin token or categories missing")
+            return
+        
+        category_id = self.categories[0]['id']
+        
+        # Test creating test configuration
+        test_config_data = {
+            "name": "Basic Driver License Test",
+            "description": "Standard test for driver license applicants",
+            "category_id": category_id,
+            "total_questions": 20,
+            "pass_mark_percentage": 75,
+            "time_limit_minutes": 25,
+            "is_active": True,
+            "difficulty_distribution": {"easy": 30, "medium": 50, "hard": 20}
+        }
+        
+        success, response = self.make_request('POST', 'test-configs', test_config_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Test Configuration", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.test_config_id = response.get('config_id')
+        
+        # Test getting all test configurations
+        success, response = self.make_request('GET', 'test-configs', token=self.tokens['admin'])
+        self.log_test("Get All Test Configurations", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} configurations" if success else f"Error: {response}")
+        
+        # Test getting specific test configuration
+        if hasattr(self, 'test_config_id'):
+            success, response = self.make_request('GET', f'test-configs/{self.test_config_id}', 
+                                                token=self.tokens['admin'])
+            self.log_test("Get Specific Test Configuration", success,
+                         f"Config Name: {response.get('name', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test updating test configuration
+        if hasattr(self, 'test_config_id'):
+            update_data = {
+                "name": "Updated Driver License Test",
+                "total_questions": 25,
+                "time_limit_minutes": 30
+            }
+            
+            success, response = self.make_request('PUT', f'test-configs/{self.test_config_id}', update_data,
+                                                token=self.tokens['admin'])
+            self.log_test("Update Test Configuration", success,
+                         f"Configuration updated successfully" if success else f"Error: {response}")
+        
+        # Test invalid difficulty distribution
+        invalid_config = {
+            "name": "Invalid Test Config",
+            "category_id": category_id,
+            "total_questions": 20,
+            "pass_mark_percentage": 75,
+            "time_limit_minutes": 25,
+            "difficulty_distribution": {"easy": 30, "medium": 50, "hard": 30}  # Adds up to 110%
+        }
+        
+        success, response = self.make_request('POST', 'test-configs', invalid_config,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Create Invalid Test Config (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test non-admin access
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'test-configs', test_config_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Create Test Config (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_test_sessions(self):
+        """Test Phase 4: Test Session Management"""
+        print("🎯 Testing Phase 4: Test Session Management")
+        
+        if ('test_candidate' not in self.tokens or not hasattr(self, 'test_config_id') or 
+            not hasattr(self, 'mc_question_id')):
+            self.log_test("Prerequisites Missing for Test Sessions", False, 
+                         "Test candidate token, test config, or approved questions missing")
+            return
+        
+        # First, approve some questions to have enough for a test
+        if 'admin' in self.tokens:
+            # Approve the video question too
+            if hasattr(self, 'video_question_id'):
+                approval_data = {
+                    "question_id": self.video_question_id,
+                    "action": "approve",
+                    "notes": "Approved for testing"
+                }
+                self.make_request('POST', 'questions/approve', approval_data, token=self.tokens['admin'])
+        
+        # Get candidate ID
+        candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                     token=self.tokens['test_candidate'])
+        if not candidate_profile_response[0]:
+            self.log_test("Get Candidate Profile for Test", False, "Could not get candidate profile")
+            return
+        
+        candidate_id = candidate_profile_response[1].get('id')
+        
+        # Test starting a test session
+        test_session_data = {
+            "test_config_id": self.test_config_id,
+            "candidate_id": candidate_id
+        }
+        
+        success, response = self.make_request('POST', 'tests/start', test_session_data,
+                                            token=self.tokens['test_candidate'], expected_status=200)
+        self.log_test("Start Test Session", success,
+                     f"Session ID: {response.get('id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.test_session_id = response.get('id')
+            self.test_questions = response.get('questions', [])
+        
+        # Test getting test session info
+        if hasattr(self, 'test_session_id'):
+            success, response = self.make_request('GET', f'tests/session/{self.test_session_id}',
+                                                token=self.tokens['test_candidate'])
+            self.log_test("Get Test Session Info", success,
+                         f"Status: {response.get('status', 'N/A')}, Questions: {len(response.get('questions', []))}" if success else f"Error: {response}")
+        
+        # Test getting question by index
+        if hasattr(self, 'test_session_id'):
+            success, response = self.make_request('GET', f'tests/session/{self.test_session_id}/question/0',
+                                                token=self.tokens['test_candidate'])
+            self.log_test("Get Question by Index", success,
+                         f"Question Type: {response.get('question_type', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                self.current_question = response
+        
+        # Test saving an answer
+        if hasattr(self, 'test_session_id') and hasattr(self, 'current_question'):
+            question_id = self.current_question.get('id')
+            if question_id:
+                if self.current_question.get('question_type') == 'multiple_choice':
+                    answer_data = {
+                        "question_id": question_id,
+                        "selected_option": "B",
+                        "is_bookmarked": False
+                    }
+                else:
+                    answer_data = {
+                        "question_id": question_id,
+                        "boolean_answer": True,
+                        "is_bookmarked": False
+                    }
+                
+                success, response = self.make_request('POST', f'tests/session/{self.test_session_id}/answer',
+                                                    answer_data, token=self.tokens['test_candidate'])
+                self.log_test("Save Test Answer", success,
+                             f"Answer saved successfully" if success else f"Error: {response}")
+        
+        # Test bookmarking a question
+        if hasattr(self, 'test_session_id') and hasattr(self, 'current_question'):
+            question_id = self.current_question.get('id')
+            if question_id:
+                bookmark_data = {
+                    "question_id": question_id,
+                    "is_bookmarked": True
+                }
+                
+                success, response = self.make_request('POST', f'tests/session/{self.test_session_id}/answer',
+                                                    bookmark_data, token=self.tokens['test_candidate'])
+                self.log_test("Bookmark Question", success,
+                             f"Question bookmarked successfully" if success else f"Error: {response}")
+
+    def test_test_submission(self):
+        """Test Phase 4: Test Submission and Scoring"""
+        print("📝 Testing Phase 4: Test Submission and Scoring")
+        
+        if not hasattr(self, 'test_session_id') or not hasattr(self, 'test_questions'):
+            self.log_test("Prerequisites Missing for Test Submission", False, "Test session not started")
+            return
+        
+        # Create sample answers for all questions
+        answers = []
+        for i, question_id in enumerate(self.test_questions[:5]):  # Answer first 5 questions
+            # Get question details to determine type
+            success, question_response = self.make_request('GET', f'tests/session/{self.test_session_id}/question/{i}',
+                                                         token=self.tokens['test_candidate'])
+            if success:
+                question_type = question_response.get('question_type')
+                if question_type == 'multiple_choice':
+                    answers.append({
+                        "question_id": question_id,
+                        "selected_option": "A",  # Just select first option for testing
+                        "is_bookmarked": False
+                    })
+                elif question_type == 'true_false':
+                    answers.append({
+                        "question_id": question_id,
+                        "boolean_answer": True,
+                        "is_bookmarked": False
+                    })
+        
+        # Test submitting the test
+        submission_data = {
+            "session_id": self.test_session_id,
+            "answers": answers,
+            "is_final_submission": True
+        }
+        
+        success, response = self.make_request('POST', f'tests/session/{self.test_session_id}/submit',
+                                            submission_data, token=self.tokens['test_candidate'])
+        self.log_test("Submit Test", success,
+                     f"Score: {response.get('score_percentage', 'N/A')}%, Passed: {response.get('passed', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.test_result_id = response.get('id')
+
+    def test_time_management(self):
+        """Test Phase 4: Time Management"""
+        print("⏰ Testing Phase 4: Time Management")
+        
+        if 'officer' not in self.tokens:
+            self.log_test("Officer Token Required for Time Management", False, "Officer login failed")
+            return
+        
+        # Start a new test session for time management testing
+        if hasattr(self, 'test_config_id') and 'test_candidate' in self.tokens:
+            # Get candidate profile
+            candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                         token=self.tokens['test_candidate'])
+            if candidate_profile_response[0]:
+                candidate_id = candidate_profile_response[1].get('id')
+                
+                # Start new session
+                test_session_data = {
+                    "test_config_id": self.test_config_id,
+                    "candidate_id": candidate_id
+                }
+                
+                success, response = self.make_request('POST', 'tests/start', test_session_data,
+                                                    token=self.tokens['test_candidate'])
+                if success:
+                    time_test_session_id = response.get('id')
+                    
+                    # Test extending time
+                    extension_data = {
+                        "session_id": time_test_session_id,
+                        "additional_minutes": 10,
+                        "reason": "Technical difficulties during test"
+                    }
+                    
+                    success, response = self.make_request('POST', f'tests/session/{time_test_session_id}/extend-time',
+                                                        extension_data, token=self.tokens['officer'])
+                    self.log_test("Extend Test Time", success,
+                                 f"Time extended by 10 minutes" if success else f"Error: {response}")
+                    
+                    # Test resetting time
+                    success, response = self.make_request('POST', f'tests/session/{time_test_session_id}/reset-time',
+                                                        {}, token=self.tokens['officer'])
+                    self.log_test("Reset Test Time", success,
+                                 f"Time reset to original limit" if success else f"Error: {response}")
+                    
+                    # Test unauthorized time extension (candidate trying to extend)
+                    success, response = self.make_request('POST', f'tests/session/{time_test_session_id}/extend-time',
+                                                        extension_data, token=self.tokens['test_candidate'], expected_status=403)
+                    self.log_test("Candidate Extend Time (Should Fail)", success,
+                                 f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_results_and_analytics(self):
+        """Test Phase 4: Results and Analytics"""
+        print("📊 Testing Phase 4: Results and Analytics")
+        
+        # Test getting test results
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'tests/results', token=self.tokens['test_candidate'])
+            self.log_test("Get Test Results (Candidate)", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} results" if success else f"Error: {response}")
+        
+        # Test getting specific test result
+        if hasattr(self, 'test_result_id') and 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', f'tests/results/{self.test_result_id}',
+                                                token=self.tokens['test_candidate'])
+            self.log_test("Get Specific Test Result", success,
+                         f"Result ID: {response.get('id', 'N/A')}, Score: {response.get('score_percentage', 'N/A')}%" if success else f"Error: {response}")
+        
+        # Test staff access to all results
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'tests/results', token=self.tokens['officer'])
+            self.log_test("Get All Test Results (Staff)", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} results" if success else f"Error: {response}")
+        
+        # Test analytics dashboard
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'tests/analytics', token=self.tokens['officer'])
+            self.log_test("Get Test Analytics", success,
+                         f"Total Sessions: {response.get('total_sessions', 0)}, Pass Rate: {response.get('pass_rate', 0):.1f}%" if success else f"Error: {response}")
+            
+            if success:
+                # Verify analytics structure
+                expected_keys = ['total_sessions', 'active_sessions', 'completed_sessions', 'total_results', 
+                               'passed_results', 'pass_rate', 'average_score', 'results_by_test']
+                missing_keys = [key for key in expected_keys if key not in response]
+                
+                if not missing_keys:
+                    self.log_test("Analytics Structure", True, "All expected fields present")
+                else:
+                    self.log_test("Analytics Structure", False, f"Missing fields: {missing_keys}")
+        
+        # Test candidate access to analytics (should fail)
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'tests/analytics', 
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to Analytics (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def run_phase_3_tests(self):
+        """Run Phase 3 specific tests"""
+        print("🔬 Running Phase 3: Question Bank Management Tests")
+        print()
+        
+        try:
+            self.test_admin_login()
+            self.test_test_categories()
+            self.test_question_creation()
+            self.test_question_management()
+            self.test_question_approval_workflow()
+            self.test_question_bank_statistics()
+            self.test_bulk_upload_questions()
+        except Exception as e:
+            print(f"💥 Error during Phase 3 testing: {str(e)}")
+
+    def run_phase_4_tests(self):
+        """Run Phase 4 specific tests"""
+        print("🔬 Running Phase 4: Test Taking System Tests")
+        print()
+        
+        try:
+            self.test_test_configurations()
+            self.test_test_sessions()
+            self.test_test_submission()
+            self.test_time_management()
+            self.test_results_and_analytics()
+        except Exception as e:
+            print(f"💥 Error during Phase 4 testing: {str(e)}")
+
     def run_all_tests(self):
         """Run all backend tests"""
         print("🧪 Starting Comprehensive Backend API Testing")
