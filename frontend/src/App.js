@@ -479,7 +479,10 @@ const DashboardLayout = ({ children }) => {
           { label: 'Question Bank', path: '/questions', icon: FileText },
           { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle },
           { label: 'Test Configurations', path: '/test-configs', icon: Settings },
-          { label: 'Test Management', path: '/test-management', icon: FileCheck }
+          { label: 'Test Management', path: '/test-management', icon: FileCheck },
+          // Phase 8: Regional Director access to advanced reports and bulk operations
+          { label: 'Advanced Reports', path: '/advanced-reports', icon: BarChart3 },
+          { label: 'Bulk Operations', path: '/bulk-operations', icon: Database }
         );
       } else if (user.role in ['Driver Assessment Officer', 'Manager']) {
         staffItems.push(
