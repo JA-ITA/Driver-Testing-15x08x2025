@@ -4863,4 +4863,355 @@ const MultiStageTestConfigurations = () => {
   );
 };
 
+// Evaluation Criteria Management Component
+const EvaluationCriteriaManagement = () => {
+  const [criteria, setCriteria] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingCriterion, setEditingCriterion] = useState(null);
+  const [selectedStage, setSelectedStage] = useState('all');
+
+  const [newCriterion, setNewCriterion] = useState({
+    stage: 'yard',
+    name: '',
+    description: '',
+    max_points: 10,
+    is_critical: false,
+    is_active: true
+  });
+
+  useEffect(() => {
+    fetchCriteria();
+  }, [selectedStage]);
+
+  const fetchCriteria = async () => {
+    try {
+      const url = selectedStage === 'all' 
+        ? `${API}/evaluation-criteria`
+        : `${API}/evaluation-criteria?stage=${selectedStage}`;
+      const response = await axios.get(url);
+      setCriteria(response.data);
+    } catch (error) {
+      console.error('Error fetching evaluation criteria:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingCriterion) {
+        await axios.put(`${API}/evaluation-criteria/${editingCriterion.id}`, newCriterion);
+      } else {
+        await axios.post(`${API}/evaluation-criteria`, newCriterion);
+      }
+      
+      // Reset form
+      setNewCriterion({
+        stage: 'yard',
+        name: '',
+        description: '',
+        max_points: 10,
+        is_critical: false,
+        is_active: true
+      });
+      setShowCreateForm(false);
+      setEditingCriterion(null);
+      fetchCriteria();
+    } catch (error) {
+      console.error('Error saving evaluation criterion:', error);
+      alert(error.response?.data?.detail || 'Error saving criterion');
+    }
+  };
+
+  const handleEdit = (criterion) => {
+    setEditingCriterion(criterion);
+    setNewCriterion(criterion);
+    setShowCreateForm(true);
+  };
+
+  // Predefined criteria templates for quick creation
+  const getDefaultCriteria = (stage) => {
+    const yardCriteria = [
+      { name: 'Reversing', description: 'Ability to reverse vehicle safely and accurately', max_points: 25, is_critical: true },
+      { name: 'Parallel Parking', description: 'Successfully park vehicle between two cars', max_points: 25, is_critical: true },
+      { name: 'Hill Start', description: 'Start vehicle on an incline without rolling backwards', max_points: 25, is_critical: true },
+      { name: 'Vehicle Control', description: 'Overall control and handling of the vehicle', max_points: 25, is_critical: false }
+    ];
+
+    const roadCriteria = [
+      { name: 'Use of Road', description: 'Proper positioning, following distance, speed control', max_points: 30, is_critical: true },
+      { name: 'Three-Point Turns', description: 'Execute three-point turn safely and efficiently', max_points: 25, is_critical: true },
+      { name: 'Intersections', description: 'Navigate intersections safely with proper signaling', max_points: 30, is_critical: true },
+      { name: 'Traffic Rules', description: 'Adherence to traffic rules and regulations', max_points: 15, is_critical: true }
+    ];
+
+    return stage === 'yard' ? yardCriteria : roadCriteria;
+  };
+
+  const createDefaultCriteria = async (stage) => {
+    const defaultCriteria = getDefaultCriteria(stage);
+    try {
+      for (const criterion of defaultCriteria) {
+        await axios.post(`${API}/evaluation-criteria`, {
+          ...criterion,
+          stage: stage,
+          is_active: true
+        });
+      }
+      fetchCriteria();
+    } catch (error) {
+      console.error('Error creating default criteria:', error);
+    }
+  };
+
+  const groupedCriteria = criteria.reduce((groups, criterion) => {
+    const stage = criterion.stage;
+    if (!groups[stage]) {
+      groups[stage] = [];
+    }
+    groups[stage].push(criterion);
+    return groups;
+  }, {});
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Evaluation Criteria Management</h1>
+            <p className="text-slate-600 mt-1">Manage checklist criteria for yard and road tests</p>
+          </div>
+          <div className="flex space-x-2">
+            <Select value={selectedStage} onValueChange={setSelectedStage}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stages</SelectItem>
+                <SelectItem value="yard">Yard Test</SelectItem>
+                <SelectItem value="road">Road Test</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={() => setShowCreateForm(true)} className="flex items-center space-x-2">
+              <Plus className="h-4 w-4" />
+              <span>Add Criterion</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Create/Edit Form */}
+        {showCreateForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingCriterion ? 'Edit Criterion' : 'Create Evaluation Criterion'}</CardTitle>
+              <CardDescription>Define checklist items for officer evaluations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="stage">Test Stage</Label>
+                    <Select value={newCriterion.stage} onValueChange={(value) => setNewCriterion({...newCriterion, stage: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yard">Yard Test (Competency)</SelectItem>
+                        <SelectItem value="road">Road Test</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Criterion Name</Label>
+                    <Input
+                      id="name"
+                      value={newCriterion.name}
+                      onChange={(e) => setNewCriterion({...newCriterion, name: e.target.value})}
+                      placeholder="e.g., Parallel Parking"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newCriterion.description}
+                    onChange={(e) => setNewCriterion({...newCriterion, description: e.target.value})}
+                    placeholder="Detailed description of what to evaluate"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="max_points">Maximum Points</Label>
+                    <Input
+                      id="max_points"
+                      type="number"
+                      value={newCriterion.max_points}
+                      onChange={(e) => setNewCriterion({...newCriterion, max_points: parseInt(e.target.value)})}
+                      min="1"
+                      max="100"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newCriterion.is_critical}
+                        onChange={(e) => setNewCriterion({...newCriterion, is_critical: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm font-medium">Critical Criterion</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newCriterion.is_active}
+                        onChange={(e) => setNewCriterion({...newCriterion, is_active: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Active</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex space-x-2 pt-4">
+                  <Button type="submit">{editingCriterion ? 'Update Criterion' : 'Create Criterion'}</Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowCreateForm(false);
+                      setEditingCriterion(null);
+                      setNewCriterion({
+                        stage: 'yard',
+                        name: '',
+                        description: '',
+                        max_points: 10,
+                        is_critical: false,
+                        is_active: true
+                      });
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick Setup */}
+        {criteria.length === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Setup</CardTitle>
+              <CardDescription>Create default evaluation criteria for each test stage</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 border rounded-lg">
+                  <h3 className="font-medium text-green-800 mb-2">Yard Test Criteria</h3>
+                  <p className="text-sm text-green-700 mb-4">Reversing, Parallel Parking, Hill Start, Vehicle Control</p>
+                  <Button size="sm" onClick={() => createDefaultCriteria('yard')}>
+                    Create Yard Criteria
+                  </Button>
+                </div>
+                <div className="p-4 border rounded-lg">
+                  <h3 className="font-medium text-purple-800 mb-2">Road Test Criteria</h3>
+                  <p className="text-sm text-purple-700 mb-4">Use of Road, Three-Point Turns, Intersections, Traffic Rules</p>
+                  <Button size="sm" onClick={() => createDefaultCriteria('road')}>
+                    Create Road Criteria
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Criteria List by Stage */}
+        {Object.keys(groupedCriteria).length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <Target className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-slate-800 mb-2">No Evaluation Criteria</h3>
+              <p className="text-slate-600 mb-4">Create evaluation criteria for officers to conduct checklist-based assessments.</p>
+              <Button onClick={() => setShowCreateForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create First Criterion
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-6">
+            {Object.entries(groupedCriteria).map(([stage, stageCriteria]) => (
+              <Card key={stage}>
+                <CardHeader>
+                  <CardTitle className="flex items-center space-x-2">
+                    <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      stage === 'yard' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'
+                    }`}>
+                      {stage === 'yard' ? 'Yard Test' : 'Road Test'}
+                    </span>
+                    <span>({stageCriteria.length} criteria)</span>
+                  </CardTitle>
+                  <CardDescription>
+                    {stage === 'yard' 
+                      ? 'Competency yard test evaluation criteria'
+                      : 'Real driving assessment criteria'
+                    }
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4">
+                    {stageCriteria.map((criterion) => (
+                      <div key={criterion.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3">
+                            <h4 className="font-medium text-slate-800">{criterion.name}</h4>
+                            <div className="flex space-x-2">
+                              <Badge variant={criterion.is_active ? "default" : "secondary"} className="text-xs">
+                                {criterion.is_active ? "Active" : "Inactive"}
+                              </Badge>
+                              {criterion.is_critical && (
+                                <Badge variant="destructive" className="text-xs">Critical</Badge>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-slate-600 text-sm mt-1">{criterion.description}</p>
+                          <p className="text-slate-500 text-xs mt-2">Max Points: {criterion.max_points}</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(criterion)}>
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
