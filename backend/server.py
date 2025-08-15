@@ -820,6 +820,722 @@ async def get_question_stats(current_user: dict = Depends(get_current_user)):
         "by_type": serialize_doc(type_stats)
     }
 
+# =============================================================================
+# TEST MANAGEMENT SYSTEM
+# =============================================================================
+
+# Test Configuration Models
+class TestConfiguration(BaseModel):
+    name: str
+    description: Optional[str] = None
+    category_id: str
+    total_questions: int = 20
+    pass_mark_percentage: int = 75
+    time_limit_minutes: int = 25
+    is_active: bool = True
+    difficulty_distribution: Optional[dict] = {"easy": 30, "medium": 50, "hard": 20}  # percentages
+
+class TestConfigurationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    total_questions: Optional[int] = None
+    pass_mark_percentage: Optional[int] = None
+    time_limit_minutes: Optional[int] = None
+    is_active: Optional[bool] = None
+    difficulty_distribution: Optional[dict] = None
+
+class TestSession(BaseModel):
+    test_config_id: str
+    candidate_id: str
+
+class TestAnswer(BaseModel):
+    question_id: str
+    selected_option: Optional[str] = None  # For multiple choice (A, B, C, D)
+    boolean_answer: Optional[bool] = None  # For true/false
+    is_bookmarked: bool = False
+
+class TestSubmission(BaseModel):
+    session_id: str
+    answers: List[TestAnswer]
+    is_final_submission: bool = True
+
+class TimeExtension(BaseModel):
+    session_id: str
+    additional_minutes: int
+    reason: Optional[str] = None
+
+# Test Configuration routes
+@api_router.post("/test-configs")
+async def create_test_config(config_data: TestConfiguration, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create test configurations
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create test configurations"
+        )
+    
+    # Validate category exists
+    category = await db.test_categories.find_one({"id": config_data.category_id, "is_active": True})
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found or inactive"
+        )
+    
+    # Validate difficulty distribution adds up to 100
+    if config_data.difficulty_distribution:
+        total_percentage = sum(config_data.difficulty_distribution.values())
+        if total_percentage != 100:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Difficulty distribution must add up to 100%"
+            )
+    
+    config_doc = {
+        "id": str(uuid.uuid4()),
+        "name": config_data.name,
+        "description": config_data.description,
+        "category_id": config_data.category_id,
+        "category_name": category["name"],
+        "total_questions": config_data.total_questions,
+        "pass_mark_percentage": config_data.pass_mark_percentage,
+        "time_limit_minutes": config_data.time_limit_minutes,
+        "is_active": config_data.is_active,
+        "difficulty_distribution": config_data.difficulty_distribution,
+        "created_by": current_user["email"],
+        "created_by_name": current_user["full_name"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.test_configurations.insert_one(config_doc)
+    return {"message": "Test configuration created successfully", "config_id": config_doc["id"]}
+
+@api_router.get("/test-configs")
+async def get_test_configs(current_user: dict = Depends(get_current_user)):
+    # All authenticated users can view active test configurations
+    configs = await db.test_configurations.find({"is_active": True}).to_list(1000)
+    return serialize_doc(configs)
+
+@api_router.get("/test-configs/{config_id}")
+async def get_test_config(config_id: str, current_user: dict = Depends(get_current_user)):
+    config = await db.test_configurations.find_one({"id": config_id})
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test configuration not found"
+        )
+    return serialize_doc(config)
+
+@api_router.put("/test-configs/{config_id}")
+async def update_test_config(
+    config_id: str, 
+    config_data: TestConfigurationUpdate, 
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update test configurations
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update test configurations"
+        )
+    
+    config = await db.test_configurations.find_one({"id": config_id})
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test configuration not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in config_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.test_configurations.update_one(
+            {"id": config_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Test configuration updated successfully"}
+
+# Test Session Management
+@api_router.post("/tests/start")
+async def start_test_session(test_data: TestSession, current_user: dict = Depends(get_current_user)):
+    # Only approved candidates can start tests
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"], "status": "approved"})
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only approved candidates can start tests"
+            )
+        test_data.candidate_id = candidate["id"]
+    else:
+        # Staff members can start tests for testing purposes
+        candidate = await db.candidates.find_one({"id": test_data.candidate_id})
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Candidate not found"
+            )
+    
+    # Get test configuration
+    test_config = await db.test_configurations.find_one({"id": test_data.test_config_id, "is_active": True})
+    if not test_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test configuration not found or inactive"
+        )
+    
+    # Check if candidate has an active session
+    active_session = await db.test_sessions.find_one({
+        "candidate_id": test_data.candidate_id,
+        "test_config_id": test_data.test_config_id,
+        "status": "active"
+    })
+    if active_session:
+        return serialize_doc(active_session)
+    
+    # Get randomized questions based on configuration
+    questions = await get_randomized_questions(test_config)
+    if len(questions) < test_config["total_questions"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Not enough approved questions available. Need {test_config['total_questions']}, found {len(questions)}"
+        )
+    
+    # Create test session
+    session_doc = {
+        "id": str(uuid.uuid4()),
+        "test_config_id": test_data.test_config_id,
+        "candidate_id": test_data.candidate_id,
+        "candidate_email": candidate["email"],
+        "candidate_name": candidate["full_name"],
+        "test_name": test_config["name"],
+        "questions": [q["id"] for q in questions[:test_config["total_questions"]]],
+        "question_details": serialize_doc(questions[:test_config["total_questions"]]),
+        "start_time": datetime.utcnow(),
+        "end_time": datetime.utcnow() + timedelta(minutes=test_config["time_limit_minutes"]),
+        "time_limit_minutes": test_config["time_limit_minutes"],
+        "time_extensions": [],
+        "status": "active",  # active, completed, expired, cancelled
+        "current_question_index": 0,
+        "answers": {},
+        "bookmarked_questions": [],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.test_sessions.insert_one(session_doc)
+    
+    # Return session without question details (for security)
+    session_response = serialize_doc(session_doc)
+    del session_response["question_details"]
+    
+    return session_response
+
+async def get_randomized_questions(test_config: dict) -> List[dict]:
+    """Get randomized questions based on difficulty distribution"""
+    category_id = test_config["category_id"]
+    total_questions = test_config["total_questions"]
+    difficulty_dist = test_config.get("difficulty_distribution", {"easy": 30, "medium": 50, "hard": 20})
+    
+    questions = []
+    
+    for difficulty, percentage in difficulty_dist.items():
+        questions_needed = int((percentage / 100) * total_questions)
+        if questions_needed > 0:
+            difficulty_questions = await db.questions.find({
+                "category_id": category_id,
+                "difficulty": difficulty,
+                "status": "approved"
+            }).to_list(questions_needed * 2)  # Get more than needed for randomization
+            
+            # Randomize and take required amount
+            import random
+            random.shuffle(difficulty_questions)
+            questions.extend(difficulty_questions[:questions_needed])
+    
+    # If we don't have enough questions with specific difficulties, fill with any approved questions
+    if len(questions) < total_questions:
+        remaining_needed = total_questions - len(questions)
+        question_ids = [q["id"] for q in questions]
+        
+        additional_questions = await db.questions.find({
+            "category_id": category_id,
+            "status": "approved",
+            "id": {"$nin": question_ids}
+        }).to_list(remaining_needed)
+        
+        questions.extend(additional_questions)
+    
+    # Final randomization
+    import random
+    random.shuffle(questions)
+    return questions
+
+@api_router.get("/tests/session/{session_id}")
+async def get_test_session(session_id: str, current_user: dict = Depends(get_current_user)):
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or session["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test session"
+            )
+    
+    # Check if session is expired
+    if session["status"] == "active" and datetime.utcnow() > session["end_time"]:
+        # Auto-expire the session
+        await db.test_sessions.update_one(
+            {"id": session_id},
+            {"$set": {"status": "expired", "updated_at": datetime.utcnow()}}
+        )
+        session["status"] = "expired"
+    
+    return serialize_doc(session)
+
+@api_router.get("/tests/session/{session_id}/question/{question_index}")
+async def get_question_by_index(session_id: str, question_index: int, current_user: dict = Depends(get_current_user)):
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or session["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test session"
+            )
+    
+    # Check session status and time
+    if session["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Test session is not active"
+        )
+    
+    if datetime.utcnow() > session["end_time"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Test session has expired"
+        )
+    
+    # Validate question index
+    if question_index < 0 or question_index >= len(session["question_details"]):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found"
+        )
+    
+    question = session["question_details"][question_index]
+    
+    # Remove correct answers from response for security
+    if "options" in question and question["options"]:
+        question_copy = question.copy()
+        question_copy["options"] = [{"text": opt["text"]} for opt in question["options"]]
+        question = question_copy
+    
+    # Remove correct_answer field
+    if "correct_answer" in question:
+        question = {k: v for k, v in question.items() if k != "correct_answer"}
+    
+    # Add current answer and bookmark status
+    question["current_answer"] = session["answers"].get(question["id"])
+    question["is_bookmarked"] = question["id"] in session.get("bookmarked_questions", [])
+    question["question_number"] = question_index + 1
+    question["total_questions"] = len(session["question_details"])
+    
+    return serialize_doc(question)
+
+@api_router.post("/tests/session/{session_id}/answer")
+async def save_test_answer(session_id: str, answer_data: TestAnswer, current_user: dict = Depends(get_current_user)):
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or session["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test session"
+            )
+    
+    # Check session status
+    if session["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot save answers to inactive test session"
+        )
+    
+    if datetime.utcnow() > session["end_time"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Test session has expired"
+        )
+    
+    # Save answer
+    update_data = {}
+    if answer_data.selected_option is not None or answer_data.boolean_answer is not None:
+        update_data[f"answers.{answer_data.question_id}"] = {
+            "selected_option": answer_data.selected_option,
+            "boolean_answer": answer_data.boolean_answer,
+            "answered_at": datetime.utcnow()
+        }
+    
+    # Handle bookmarking
+    if answer_data.is_bookmarked:
+        update_data["$addToSet"] = {"bookmarked_questions": answer_data.question_id}
+    else:
+        update_data["$pull"] = {"bookmarked_questions": answer_data.question_id}
+    
+    update_data["updated_at"] = datetime.utcnow()
+    
+    await db.test_sessions.update_one(
+        {"id": session_id},
+        {"$set": update_data} if "$addToSet" not in update_data and "$pull" not in update_data 
+        else {**{k: v for k, v in update_data.items() if not k.startswith("$")}, **{k: v for k, v in update_data.items() if k.startswith("$")}}
+    )
+    
+    return {"message": "Answer saved successfully"}
+
+@api_router.post("/tests/session/{session_id}/submit")
+async def submit_test(session_id: str, submission_data: TestSubmission, current_user: dict = Depends(get_current_user)):
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or session["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test session"
+            )
+    
+    if session["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Test session is not active"
+        )
+    
+    # Calculate score
+    score_result = await calculate_test_score(session, submission_data.answers)
+    
+    # Create test result
+    test_config = await db.test_configurations.find_one({"id": session["test_config_id"]})
+    
+    result_doc = {
+        "id": str(uuid.uuid4()),
+        "session_id": session_id,
+        "candidate_id": session["candidate_id"],
+        "candidate_email": session["candidate_email"],
+        "candidate_name": session["candidate_name"],
+        "test_config_id": session["test_config_id"],
+        "test_name": session["test_name"],
+        "total_questions": len(session["question_details"]),
+        "answered_questions": score_result["answered_questions"],
+        "correct_answers": score_result["correct_answers"],
+        "score_percentage": score_result["score_percentage"],
+        "pass_mark": test_config["pass_mark_percentage"],
+        "passed": score_result["score_percentage"] >= test_config["pass_mark_percentage"],
+        "time_taken_minutes": (datetime.utcnow() - session["start_time"]).total_seconds() / 60,
+        "time_extensions": session.get("time_extensions", []),
+        "submitted_at": datetime.utcnow(),
+        "question_results": score_result["question_results"],
+        "created_at": datetime.utcnow()
+    }
+    
+    # Update session status
+    await db.test_sessions.update_one(
+        {"id": session_id},
+        {"$set": {
+            "status": "completed",
+            "completed_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    await db.test_results.insert_one(result_doc)
+    
+    return serialize_doc(result_doc)
+
+async def calculate_test_score(session: dict, answers: List[TestAnswer]) -> dict:
+    """Calculate the test score based on answers"""
+    correct_answers = 0
+    answered_questions = 0
+    question_results = []
+    
+    # Convert answers list to dict for easy lookup
+    answers_dict = {}
+    for answer in answers:
+        answers_dict[answer.question_id] = answer
+    
+    for question in session["question_details"]:
+        question_id = question["id"]
+        user_answer = answers_dict.get(question_id)
+        
+        result = {
+            "question_id": question_id,
+            "question_text": question["question_text"],
+            "question_type": question["question_type"],
+            "user_answer": None,
+            "correct_answer": None,
+            "is_correct": False,
+            "answered": False
+        }
+        
+        if user_answer:
+            answered_questions += 1
+            result["answered"] = True
+            
+            if question["question_type"] == "multiple_choice" and question["options"]:
+                # Find correct option
+                correct_option = None
+                for i, option in enumerate(question["options"]):
+                    if option["is_correct"]:
+                        correct_option = chr(65 + i)  # Convert to A, B, C, D
+                        break
+                
+                result["correct_answer"] = correct_option
+                result["user_answer"] = user_answer.selected_option
+                
+                if user_answer.selected_option == correct_option:
+                    correct_answers += 1
+                    result["is_correct"] = True
+            
+            elif question["question_type"] == "true_false":
+                result["correct_answer"] = question["correct_answer"]
+                result["user_answer"] = user_answer.boolean_answer
+                
+                if user_answer.boolean_answer == question["correct_answer"]:
+                    correct_answers += 1
+                    result["is_correct"] = True
+        
+        question_results.append(result)
+    
+    score_percentage = (correct_answers / len(session["question_details"])) * 100 if len(session["question_details"]) > 0 else 0
+    
+    return {
+        "correct_answers": correct_answers,
+        "answered_questions": answered_questions,
+        "score_percentage": round(score_percentage, 2),
+        "question_results": question_results
+    }
+
+# Time Extension Management
+@api_router.post("/tests/session/{session_id}/extend-time")
+async def extend_test_time(session_id: str, extension_data: TimeExtension, current_user: dict = Depends(get_current_user)):
+    # Only Managers and Assessment Officers can extend time
+    if current_user["role"] not in ["Manager", "Driver Assessment Officer", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers and assessment officers can extend test time"
+        )
+    
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    if session["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot extend time for inactive test session"
+        )
+    
+    # Add time extension
+    extension_record = {
+        "extended_by": current_user["email"],
+        "extended_by_name": current_user["full_name"],
+        "additional_minutes": extension_data.additional_minutes,
+        "reason": extension_data.reason,
+        "extended_at": datetime.utcnow()
+    }
+    
+    new_end_time = session["end_time"] + timedelta(minutes=extension_data.additional_minutes)
+    
+    await db.test_sessions.update_one(
+        {"id": session_id},
+        {
+            "$set": {
+                "end_time": new_end_time,
+                "updated_at": datetime.utcnow()
+            },
+            "$push": {"time_extensions": extension_record}
+        }
+    )
+    
+    return {
+        "message": f"Test time extended by {extension_data.additional_minutes} minutes",
+        "new_end_time": new_end_time.isoformat()
+    }
+
+@api_router.post("/tests/session/{session_id}/reset-time")
+async def reset_test_time(session_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Managers and Assessment Officers can reset time
+    if current_user["role"] not in ["Manager", "Driver Assessment Officer", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers and assessment officers can reset test time"
+        )
+    
+    session = await db.test_sessions.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test session not found"
+        )
+    
+    if session["status"] != "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reset time for inactive test session"
+        )
+    
+    # Get original time limit
+    test_config = await db.test_configurations.find_one({"id": session["test_config_id"]})
+    new_end_time = datetime.utcnow() + timedelta(minutes=test_config["time_limit_minutes"])
+    
+    # Add reset record
+    reset_record = {
+        "reset_by": current_user["email"],
+        "reset_by_name": current_user["full_name"],
+        "reset_to_minutes": test_config["time_limit_minutes"],
+        "reset_at": datetime.utcnow()
+    }
+    
+    await db.test_sessions.update_one(
+        {"id": session_id},
+        {
+            "$set": {
+                "end_time": new_end_time,
+                "updated_at": datetime.utcnow()
+            },
+            "$push": {"time_extensions": reset_record}
+        }
+    )
+    
+    return {
+        "message": f"Test time reset to {test_config['time_limit_minutes']} minutes",
+        "new_end_time": new_end_time.isoformat()
+    }
+
+# Test Results and Analytics
+@api_router.get("/tests/results")
+async def get_test_results(
+    candidate_id: Optional[str] = None,
+    test_config_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    query_filter = {}
+    
+    if current_user["role"] == "Candidate":
+        # Candidates can only see their own results
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if candidate:
+            query_filter["candidate_id"] = candidate["id"]
+    else:
+        # Staff can filter by candidate_id
+        if candidate_id:
+            query_filter["candidate_id"] = candidate_id
+    
+    if test_config_id:
+        query_filter["test_config_id"] = test_config_id
+    
+    results = await db.test_results.find(query_filter).sort("created_at", -1).to_list(1000)
+    return serialize_doc(results)
+
+@api_router.get("/tests/results/{result_id}")
+async def get_test_result_detail(result_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.test_results.find_one({"id": result_id})
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test result not found"
+        )
+    
+    # Check access permissions
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"]})
+        if not candidate or result["candidate_id"] != candidate["id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied to this test result"
+            )
+    
+    return serialize_doc(result)
+
+# Test Analytics Dashboard
+@api_router.get("/tests/analytics")
+async def get_test_analytics(current_user: dict = Depends(get_current_user)):
+    # Only staff can view analytics
+    if current_user["role"] == "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to test analytics"
+        )
+    
+    # Get overall statistics
+    total_sessions = await db.test_sessions.count_documents({})
+    active_sessions = await db.test_sessions.count_documents({"status": "active"})
+    completed_sessions = await db.test_sessions.count_documents({"status": "completed"})
+    
+    # Get test results statistics
+    total_results = await db.test_results.count_documents({})
+    passed_results = await db.test_results.count_documents({"passed": True})
+    
+    # Get average score
+    pipeline = [{"$group": {"_id": None, "avg_score": {"$avg": "$score_percentage"}}}]
+    avg_score_result = await db.test_results.aggregate(pipeline).to_list(1)
+    avg_score = avg_score_result[0]["avg_score"] if avg_score_result else 0
+    
+    # Get results by test configuration
+    config_pipeline = [
+        {"$group": {"_id": "$test_name", "count": {"$sum": 1}, "avg_score": {"$avg": "$score_percentage"}}},
+        {"$sort": {"count": -1}}
+    ]
+    results_by_config = await db.test_results.aggregate(config_pipeline).to_list(100)
+    
+    return {
+        "total_sessions": total_sessions,
+        "active_sessions": active_sessions,
+        "completed_sessions": completed_sessions,
+        "total_results": total_results,
+        "passed_results": passed_results,
+        "pass_rate": (passed_results / total_results * 100) if total_results > 0 else 0,
+        "average_score": round(avg_score, 2) if avg_score else 0,
+        "results_by_test": serialize_doc(results_by_config)
+    }
+
 # Include the router in the main app
 app.include_router(api_router)
 
