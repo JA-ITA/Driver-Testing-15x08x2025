@@ -756,6 +756,10 @@ metadata:
 
 test_plan:
   current_focus:
+    - "Phase 8 Certificate Generation Interface"
+    - "Phase 8 Advanced Reporting Dashboard Interface"
+    - "Phase 8 Bulk Operations Interface"
+    - "Phase 8 System Configuration Interface"
     - "User Management Interface (Administrator Add Users & Assign Roles)"
     - "Phase 6 Multi-Stage Test Configuration Interface"
     - "Phase 6 Evaluation Criteria Management Interface"
