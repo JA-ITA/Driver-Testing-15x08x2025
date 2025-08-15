@@ -2498,7 +2498,8 @@ async def create_appointment(appointment_data: AppointmentCreate, current_user: 
         "id": str(uuid.uuid4()),
         "candidate_id": candidate_id,
         "test_config_id": appointment_data.test_config_id,
-        "test_config_name": test_config["name"],
+        "test_config_name": test_config_name,
+        "test_type": appointment_data.test_type,
         "appointment_date": appointment_data.appointment_date,
         "time_slot": appointment_data.time_slot,
         "status": "scheduled",  # scheduled, confirmed, cancelled, completed
