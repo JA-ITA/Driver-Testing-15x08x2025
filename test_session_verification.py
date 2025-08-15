@@ -6,7 +6,7 @@ Verify test session functionality after fixing the question issue
 import requests
 import json
 
-BASE_URL = "https://appointment-verify.preview.emergentagent.com/api"
+BASE_URL = "https://multi-stage-testing.preview.emergentagent.com/api"
 
 def login_candidate():
     """Login as test candidate"""
