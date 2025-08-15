@@ -3610,6 +3610,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/user-management"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <UserManagement />
+              </ProtectedRoute>
+            }
+          />
           {/* Phase 6: Multi-Stage Testing System Routes */}
           <Route
             path="/multi-stage-configs"
