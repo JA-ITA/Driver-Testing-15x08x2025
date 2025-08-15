@@ -429,7 +429,10 @@ const DashboardLayout = ({ children }) => {
         { label: 'My Profile', path: '/profile', icon: User },
         { label: 'My Appointments', path: '/my-appointments', icon: Calendar },
         { label: 'Book Appointment', path: '/book-appointment', icon: Plus },
-        { label: 'Take Test', path: '/tests', icon: Play }
+        { label: 'Take Test', path: '/tests', icon: Play },
+        // Phase 7: Candidate resit management
+        { label: 'My Resits', path: '/my-resits', icon: RefreshCw },
+        { label: 'Reschedule Appointment', path: '/reschedule-appointment', icon: History }
       ];
     } else {
       const staffItems = [
