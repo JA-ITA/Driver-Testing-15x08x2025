@@ -2619,11 +2619,12 @@ class ITABackendTester:
                 # Test creating a certificate
                 certificate_data = {
                     "candidate_id": candidate_id,
-                    "session_id": session_id,
+                    "test_session_id": session_id,
                     "certificate_type": "driver_license",
                     "certificate_number": f"DL{datetime.now().strftime('%Y%m%d')}{candidate_id[:6].upper()}",
-                    "issued_date": datetime.now().strftime('%Y-%m-%d'),
-                    "valid_until": "2029-12-31",
+                    "issued_by": self.users['admin']['id'],
+                    "valid_from": datetime.now().isoformat(),
+                    "valid_until": "2029-12-31T23:59:59",
                     "restrictions": ["Must wear corrective lenses"],
                     "notes": "Standard driver's license certificate"
                 }
