@@ -8504,12 +8504,12 @@ const CertificateGeneration = () => {
               </div>
               <div className="space-y-2">
                 <Label>Status</Label>
-                <Select value={filter.status} onValueChange={(value) => setFilter({ ...filter, status: value })}>
+                <Select value={filter.status || "all"} onValueChange={(value) => setFilter({ ...filter, status: value === "all" ? "" : value })}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="suspended">Suspended</SelectItem>
                     <SelectItem value="revoked">Revoked</SelectItem>
