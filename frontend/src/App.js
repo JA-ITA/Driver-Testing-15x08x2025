@@ -427,6 +427,8 @@ const DashboardLayout = ({ children }) => {
       return [
         ...baseItems,
         { label: 'My Profile', path: '/profile', icon: User },
+        { label: 'My Appointments', path: '/my-appointments', icon: Calendar },
+        { label: 'Book Appointment', path: '/book-appointment', icon: Plus },
         { label: 'Take Test', path: '/tests', icon: Play }
       ];
     } else {
@@ -436,6 +438,13 @@ const DashboardLayout = ({ children }) => {
         { label: 'Pending Approvals', path: '/approvals', icon: FileCheck }
       ];
       
+      // Phase 5: Identity Verification for Officers, Managers, and Administrators
+      if (user.role in ['Driver Assessment Officer', 'Manager', 'Administrator']) {
+        staffItems.push(
+          { label: 'Identity Verification', path: '/verify-identity', icon: Shield }
+        );
+      }
+      
       // Question Bank items for staff
       if (user.role === 'Administrator') {
         staffItems.push(
@@ -443,7 +452,8 @@ const DashboardLayout = ({ children }) => {
           { label: 'Question Bank', path: '/questions', icon: FileText },
           { label: 'Question Approvals', path: '/question-approvals', icon: CheckCircle },
           { label: 'Test Configurations', path: '/test-configs', icon: Settings },
-          { label: 'Test Management', path: '/test-management', icon: FileCheck }
+          { label: 'Test Management', path: '/test-management', icon: FileCheck },
+          { label: 'Schedule Management', path: '/schedule-management', icon: Clock }
         );
       } else if (user.role === 'Regional Director') {
         staffItems.push(
