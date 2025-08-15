@@ -457,6 +457,7 @@ const DashboardLayout = ({ children }) => {
           { label: 'Test Configurations', path: '/test-configs', icon: Settings },
           { label: 'Test Management', path: '/test-management', icon: FileCheck },
           { label: 'Schedule Management', path: '/schedule-management', icon: Clock },
+          { label: 'User Management', path: '/user-management', icon: Users },
           // Phase 6: Multi-Stage Testing System
           { label: 'Multi-Stage Tests', path: '/multi-stage-configs', icon: Layers },
           { label: 'Evaluation Criteria', path: '/evaluation-criteria', icon: Target },
