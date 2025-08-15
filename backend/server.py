@@ -3706,6 +3706,697 @@ async def get_failed_stages_analytics(current_user: dict = Depends(get_current_u
         "resit_success_rate": (successful_resits / total_resits * 100) if total_resits > 0 else 0
     }
 
+# ==========================================
+# PHASE 8: CERTIFICATION & ADVANCED ADMIN FEATURES
+# ==========================================
+
+# Certificate Models
+class CertificateType(BaseModel):
+    name: str
+    code: str  # e.g., "PDL", "COC", "PPV", "COMM"
+    description: str
+    is_active: bool = True
+
+class CertificateCreate(BaseModel):
+    candidate_id: str
+    test_session_id: str
+    certificate_type: str  # "provisional_license", "certificate_competency", "ppv_license", etc.
+    certificate_number: Optional[str] = None  # Auto-generated if not provided
+    issued_by: str  # Officer/Administrator ID
+    valid_from: datetime = Field(default_factory=datetime.utcnow)
+    valid_until: Optional[datetime] = None
+    restrictions: Optional[List[str]] = []
+    notes: Optional[str] = None
+
+class CertificateUpdate(BaseModel):
+    status: Optional[str] = None  # "active", "suspended", "revoked", "expired"
+    valid_until: Optional[datetime] = None
+    restrictions: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+class BulkOperation(BaseModel):
+    operation_type: str  # "create_users", "update_configs", "import_questions", etc.
+    data: dict
+    filters: Optional[dict] = {}
+    options: Optional[dict] = {}
+
+class SystemConfig(BaseModel):
+    category: str  # "general", "certificates", "notifications", "security"
+    key: str
+    value: str
+    description: Optional[str] = None
+    is_active: bool = True
+
+class SystemConfigUpdate(BaseModel):
+    value: str
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+
+# Certificate Generation System APIs
+@api_router.post("/certificates")
+async def create_certificate(certificate_data: CertificateCreate, current_user: dict = Depends(get_current_user)):
+    """Create a new certificate for a candidate"""
+    # Check permissions
+    if current_user["role"] not in ["Administrator", "Manager", "Driver Assessment Officer"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Verify test session exists and is completed
+    test_session = await db.multi_stage_sessions.find_one({"session_id": certificate_data.test_session_id})
+    if not test_session:
+        # Try regular test sessions
+        test_session = await db.test_sessions.find_one({"session_id": certificate_data.test_session_id})
+    
+    if not test_session:
+        raise HTTPException(status_code=404, detail="Test session not found")
+    
+    # Check if session is completed successfully
+    if test_session.get("status") not in ["completed", "passed"]:
+        raise HTTPException(status_code=400, detail="Test session not completed successfully")
+    
+    # Generate unique certificate number if not provided
+    if not certificate_data.certificate_number:
+        cert_prefix = {
+            "provisional_license": "PDL",
+            "certificate_competency": "COC", 
+            "ppv_license": "PPV",
+            "commercial_license": "COMM",
+            "hazmat_license": "HAZ"
+        }.get(certificate_data.certificate_type, "CERT")
+        
+        # Get next number in sequence
+        last_cert = await db.certificates.find_one(
+            {"certificate_number": {"$regex": f"^{cert_prefix}"}}, 
+            sort=[("certificate_number", -1)]
+        )
+        
+        if last_cert and last_cert.get("certificate_number"):
+            try:
+                last_num = int(last_cert["certificate_number"].replace(cert_prefix, "").replace("-", ""))
+                next_num = last_num + 1
+            except:
+                next_num = 1000
+        else:
+            next_num = 1000
+            
+        certificate_data.certificate_number = f"{cert_prefix}-{next_num:06d}"
+    
+    # Set validity period based on certificate type
+    if not certificate_data.valid_until:
+        if certificate_data.certificate_type == "provisional_license":
+            certificate_data.valid_until = certificate_data.valid_from + timedelta(days=365)  # 1 year
+        else:
+            certificate_data.valid_until = certificate_data.valid_from + timedelta(days=365*5)  # 5 years
+    
+    cert_doc = {
+        "certificate_id": str(uuid.uuid4()),
+        "candidate_id": certificate_data.candidate_id,
+        "test_session_id": certificate_data.test_session_id,
+        "certificate_type": certificate_data.certificate_type,
+        "certificate_number": certificate_data.certificate_number,
+        "issued_by": certificate_data.issued_by,
+        "valid_from": certificate_data.valid_from,
+        "valid_until": certificate_data.valid_until,
+        "restrictions": certificate_data.restrictions or [],
+        "notes": certificate_data.notes,
+        "status": "active",
+        "created_at": datetime.utcnow(),
+        "created_by": current_user["user_id"]
+    }
+    
+    await db.certificates.insert_one(cert_doc)
+    
+    # Log certificate generation
+    await db.audit_logs.insert_one({
+        "audit_id": str(uuid.uuid4()),
+        "action": "certificate_generated",
+        "entity_type": "certificate",
+        "entity_id": cert_doc["certificate_id"],
+        "user_id": current_user["user_id"],
+        "details": {
+            "certificate_number": certificate_data.certificate_number,
+            "certificate_type": certificate_data.certificate_type,
+            "candidate_id": certificate_data.candidate_id
+        },
+        "timestamp": datetime.utcnow()
+    })
+    
+    return {"message": "Certificate created successfully", "certificate_id": cert_doc["certificate_id"], "certificate_number": certificate_data.certificate_number}
+
+@api_router.get("/certificates")
+async def get_certificates(
+    candidate_id: Optional[str] = None,
+    certificate_type: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get certificates with optional filtering"""
+    # Build query based on user role
+    query = {}
+    
+    if current_user["role"] == "Candidate":
+        # Candidates can only see their own certificates
+        query["candidate_id"] = current_user["user_id"]
+    else:
+        # Staff can filter by candidate
+        if candidate_id:
+            query["candidate_id"] = candidate_id
+    
+    if certificate_type:
+        query["certificate_type"] = certificate_type
+    if status:
+        query["status"] = status
+    
+    certificates = []
+    async for cert in db.certificates.find(query).sort("created_at", -1):
+        # Get candidate info
+        candidate = await db.candidates.find_one({"candidate_id": cert["candidate_id"]})
+        cert["candidate_name"] = f"{candidate['first_name']} {candidate['last_name']}" if candidate else "Unknown"
+        
+        # Get issuer info
+        issuer = await db.users.find_one({"user_id": cert["issued_by"]})
+        cert["issued_by_name"] = f"{issuer['first_name']} {issuer['last_name']}" if issuer else "Unknown"
+        
+        certificates.append(serialize_doc(cert))
+    
+    return certificates
+
+@api_router.get("/certificates/{certificate_id}")
+async def get_certificate_details(certificate_id: str, current_user: dict = Depends(get_current_user)):
+    """Get detailed certificate information"""
+    cert = await db.certificates.find_one({"certificate_id": certificate_id})
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    
+    # Check permissions
+    if current_user["role"] == "Candidate" and cert["candidate_id"] != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get additional details
+    candidate = await db.candidates.find_one({"candidate_id": cert["candidate_id"]})
+    test_session = await db.multi_stage_sessions.find_one({"session_id": cert["test_session_id"]})
+    if not test_session:
+        test_session = await db.test_sessions.find_one({"session_id": cert["test_session_id"]})
+    
+    cert["candidate_details"] = serialize_doc(candidate) if candidate else None
+    cert["test_session_details"] = serialize_doc(test_session) if test_session else None
+    
+    return serialize_doc(cert)
+
+@api_router.put("/certificates/{certificate_id}")
+async def update_certificate(certificate_id: str, update_data: CertificateUpdate, current_user: dict = Depends(get_current_user)):
+    """Update certificate status or details"""
+    # Check permissions
+    if current_user["role"] not in ["Administrator", "Manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    cert = await db.certificates.find_one({"certificate_id": certificate_id})
+    if not cert:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    
+    update_doc = {"updated_at": datetime.utcnow(), "updated_by": current_user["user_id"]}
+    
+    if update_data.status:
+        update_doc["status"] = update_data.status
+    if update_data.valid_until:
+        update_doc["valid_until"] = update_data.valid_until
+    if update_data.restrictions is not None:
+        update_doc["restrictions"] = update_data.restrictions
+    if update_data.notes is not None:
+        update_doc["notes"] = update_data.notes
+    
+    await db.certificates.update_one({"certificate_id": certificate_id}, {"$set": update_doc})
+    
+    # Log certificate update
+    await db.audit_logs.insert_one({
+        "audit_id": str(uuid.uuid4()),
+        "action": "certificate_updated",
+        "entity_type": "certificate",
+        "entity_id": certificate_id,
+        "user_id": current_user["user_id"],
+        "details": update_doc,
+        "timestamp": datetime.utcnow()
+    })
+    
+    return {"message": "Certificate updated successfully"}
+
+@api_router.post("/certificates/verify/{certificate_number}")
+async def verify_certificate(certificate_number: str):
+    """Verify certificate by certificate number (public endpoint)"""
+    cert = await db.certificates.find_one({"certificate_number": certificate_number})
+    if not cert:
+        return {"valid": False, "message": "Certificate not found"}
+    
+    # Check if certificate is active and not expired
+    now = datetime.utcnow()
+    if cert["status"] != "active":
+        return {"valid": False, "message": f"Certificate status: {cert['status']}"}
+    
+    if cert.get("valid_until") and cert["valid_until"] < now:
+        return {"valid": False, "message": "Certificate expired"}
+    
+    # Get candidate name for verification
+    candidate = await db.candidates.find_one({"candidate_id": cert["candidate_id"]})
+    
+    return {
+        "valid": True,
+        "certificate_number": cert["certificate_number"],
+        "certificate_type": cert["certificate_type"],
+        "candidate_name": f"{candidate['first_name']} {candidate['last_name']}" if candidate else "Unknown",
+        "valid_from": cert["valid_from"],
+        "valid_until": cert["valid_until"],
+        "restrictions": cert.get("restrictions", [])
+    }
+
+# Advanced Reporting Dashboard APIs
+@api_router.get("/reports/system-overview")
+async def get_system_overview_report(current_user: dict = Depends(get_current_user)):
+    """Get comprehensive system overview statistics"""
+    if current_user["role"] not in ["Administrator", "Manager", "Regional Director"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get various statistics
+    total_users = await db.users.count_documents({"is_active": True})
+    total_candidates = await db.candidates.count_documents({"status": "approved"})
+    total_sessions = await db.test_sessions.count_documents({})
+    total_multi_sessions = await db.multi_stage_sessions.count_documents({})
+    total_certificates = await db.certificates.count_documents({"status": "active"})
+    
+    # Recent activity (last 30 days)
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    recent_sessions = await db.test_sessions.count_documents({"created_at": {"$gte": thirty_days_ago}})
+    recent_certificates = await db.certificates.count_documents({"created_at": {"$gte": thirty_days_ago}})
+    
+    # Pass rates
+    passed_sessions = await db.test_sessions.count_documents({"status": "passed"})
+    passed_multi_sessions = await db.multi_stage_sessions.count_documents({"status": "completed"})
+    
+    total_test_sessions = total_sessions + total_multi_sessions
+    total_passed = passed_sessions + passed_multi_sessions
+    overall_pass_rate = (total_passed / total_test_sessions * 100) if total_test_sessions > 0 else 0
+    
+    return {
+        "summary": {
+            "total_users": total_users,
+            "total_candidates": total_candidates,
+            "total_test_sessions": total_test_sessions,
+            "total_certificates": total_certificates,
+            "overall_pass_rate": round(overall_pass_rate, 2)
+        },
+        "recent_activity": {
+            "sessions_last_30_days": recent_sessions,
+            "certificates_last_30_days": recent_certificates
+        }
+    }
+
+@api_router.get("/reports/test-performance")
+async def get_test_performance_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    test_category: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get detailed test performance analytics"""
+    if current_user["role"] not in ["Administrator", "Manager", "Regional Director"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Build date filter
+    date_filter = {}
+    if start_date:
+        date_filter["$gte"] = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+    if end_date:
+        date_filter["$lte"] = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+    
+    query = {}
+    if date_filter:
+        query["created_at"] = date_filter
+    if test_category:
+        query["test_category"] = test_category
+    
+    # Performance by test type
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": "$test_category",
+            "total_attempts": {"$sum": 1},
+            "passed": {"$sum": {"$cond": [{"$eq": ["$status", "passed"]}, 1, 0]}},
+            "avg_score": {"$avg": "$final_score"}
+        }},
+        {"$project": {
+            "test_category": "$_id",
+            "total_attempts": 1,
+            "passed": 1,
+            "pass_rate": {"$multiply": [{"$divide": ["$passed", "$total_attempts"]}, 100]},
+            "avg_score": {"$round": ["$avg_score", 2]}
+        }}
+    ]
+    
+    performance_stats = []
+    async for stat in db.test_sessions.aggregate(pipeline):
+        performance_stats.append(serialize_doc(stat))
+    
+    return {
+        "performance_by_category": performance_stats,
+        "date_range": {"start": start_date, "end": end_date}
+    }
+
+@api_router.get("/reports/officer-performance")
+async def get_officer_performance_report(current_user: dict = Depends(get_current_user)):
+    """Get officer performance statistics"""
+    if current_user["role"] not in ["Administrator", "Manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get officer assignments and evaluations
+    pipeline = [
+        {"$lookup": {
+            "from": "users",
+            "localField": "officer_id",
+            "foreignField": "user_id",
+            "as": "officer_info"
+        }},
+        {"$unwind": "$officer_info"},
+        {"$group": {
+            "_id": "$officer_id",
+            "officer_name": {"$first": {"$concat": ["$officer_info.first_name", " ", "$officer_info.last_name"]}},
+            "total_assignments": {"$sum": 1},
+            "evaluations_completed": {"$sum": {"$cond": [{"$ne": ["$evaluation", None]}, 1, 0]}}
+        }},
+        {"$project": {
+            "officer_id": "$_id",
+            "officer_name": 1,
+            "total_assignments": 1,
+            "evaluations_completed": 1,
+            "completion_rate": {"$multiply": [{"$divide": ["$evaluations_completed", "$total_assignments"]}, 100]}
+        }}
+    ]
+    
+    officer_stats = []
+    async for stat in db.officer_assignments.aggregate(pipeline):
+        officer_stats.append(serialize_doc(stat))
+    
+    return {"officer_performance": officer_stats}
+
+@api_router.get("/reports/certificate-analytics")
+async def get_certificate_analytics(current_user: dict = Depends(get_current_user)):
+    """Get certificate generation and status analytics"""
+    if current_user["role"] not in ["Administrator", "Manager", "Regional Director"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Certificates by type
+    type_pipeline = [
+        {"$group": {
+            "_id": "$certificate_type",
+            "count": {"$sum": 1},
+            "active": {"$sum": {"$cond": [{"$eq": ["$status", "active"]}, 1, 0]}},
+            "expired": {"$sum": {"$cond": [{"$eq": ["$status", "expired"]}, 1, 0]}},
+            "revoked": {"$sum": {"$cond": [{"$eq": ["$status", "revoked"]}, 1, 0]}}
+        }}
+    ]
+    
+    cert_by_type = []
+    async for stat in db.certificates.aggregate(type_pipeline):
+        cert_by_type.append(serialize_doc(stat))
+    
+    # Monthly generation trends
+    monthly_pipeline = [
+        {"$group": {
+            "_id": {
+                "year": {"$year": "$created_at"},
+                "month": {"$month": "$created_at"}
+            },
+            "certificates_generated": {"$sum": 1}
+        }},
+        {"$sort": {"_id.year": 1, "_id.month": 1}},
+        {"$limit": 12}  # Last 12 months
+    ]
+    
+    monthly_trends = []
+    async for stat in db.certificates.aggregate(monthly_pipeline):
+        monthly_trends.append(serialize_doc(stat))
+    
+    return {
+        "certificates_by_type": cert_by_type,
+        "monthly_generation_trends": monthly_trends
+    }
+
+# Bulk Operations APIs
+@api_router.post("/bulk/users")
+async def bulk_create_users(operation: BulkOperation, current_user: dict = Depends(get_current_user)):
+    """Bulk create users"""
+    if current_user["role"] != "Administrator":
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if operation.operation_type != "create_users":
+        raise HTTPException(status_code=400, detail="Invalid operation type")
+    
+    users_data = operation.data.get("users", [])
+    results = {"created": 0, "errors": []}
+    
+    for user_data in users_data:
+        try:
+            # Validate required fields
+            if not all(k in user_data for k in ["email", "first_name", "last_name", "role"]):
+                results["errors"].append({"email": user_data.get("email", "unknown"), "error": "Missing required fields"})
+                continue
+            
+            # Check if user exists
+            existing = await db.users.find_one({"email": user_data["email"]})
+            if existing:
+                results["errors"].append({"email": user_data["email"], "error": "User already exists"})
+                continue
+            
+            # Create user
+            user_doc = {
+                "user_id": str(uuid.uuid4()),
+                "email": user_data["email"],
+                "first_name": user_data["first_name"],
+                "last_name": user_data["last_name"],
+                "role": user_data["role"],
+                "password": get_password_hash(user_data.get("password", "TempPass123!")),
+                "is_active": True,
+                "created_at": datetime.utcnow(),
+                "created_by": current_user["user_id"]
+            }
+            
+            await db.users.insert_one(user_doc)
+            results["created"] += 1
+            
+        except Exception as e:
+            results["errors"].append({"email": user_data.get("email", "unknown"), "error": str(e)})
+    
+    return results
+
+@api_router.post("/bulk/questions")
+async def bulk_import_questions(operation: BulkOperation, current_user: dict = Depends(get_current_user)):
+    """Bulk import questions"""
+    if current_user["role"] not in ["Administrator", "Regional Director"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    if operation.operation_type != "import_questions":
+        raise HTTPException(status_code=400, detail="Invalid operation type")
+    
+    questions_data = operation.data.get("questions", [])
+    results = {"imported": 0, "errors": []}
+    
+    for question_data in questions_data:
+        try:
+            # Validate question
+            if not all(k in question_data for k in ["question_text", "question_type", "category_id"]):
+                results["errors"].append({"question": question_data.get("question_text", "unknown")[:50], "error": "Missing required fields"})
+                continue
+            
+            # Create question
+            question_doc = {
+                "question_id": str(uuid.uuid4()),
+                "question_text": question_data["question_text"],
+                "question_type": question_data["question_type"],
+                "category_id": question_data["category_id"],
+                "difficulty": question_data.get("difficulty", "medium"),
+                "options": question_data.get("options", []),
+                "correct_answer": question_data.get("correct_answer"),
+                "explanation": question_data.get("explanation"),
+                "status": "approved",  # Auto-approve bulk imports
+                "created_at": datetime.utcnow(),
+                "created_by": current_user["user_id"]
+            }
+            
+            await db.questions.insert_one(question_doc)
+            results["imported"] += 1
+            
+        except Exception as e:
+            results["errors"].append({"question": question_data.get("question_text", "unknown")[:50], "error": str(e)})
+    
+    return results
+
+@api_router.get("/bulk/export/questions")
+async def export_questions(category_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Export questions in bulk"""
+    if current_user["role"] not in ["Administrator", "Regional Director"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    query = {"status": "approved"}
+    if category_id:
+        query["category_id"] = category_id
+    
+    questions = []
+    async for question in db.questions.find(query):
+        questions.append({
+            "question_text": question["question_text"],
+            "question_type": question["question_type"],
+            "category_id": question["category_id"],
+            "difficulty": question.get("difficulty"),
+            "options": question.get("options", []),
+            "correct_answer": question.get("correct_answer"),
+            "explanation": question.get("explanation")
+        })
+    
+    return {"questions": questions, "total": len(questions)}
+
+# System Configuration APIs
+@api_router.post("/system/config")
+async def create_system_config(config: SystemConfig, current_user: dict = Depends(get_current_user)):
+    """Create or update system configuration"""
+    if current_user["role"] != "Administrator":
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    config_doc = {
+        "config_id": str(uuid.uuid4()),
+        "category": config.category,
+        "key": config.key,
+        "value": config.value,
+        "description": config.description,
+        "is_active": config.is_active,
+        "created_at": datetime.utcnow(),
+        "created_by": current_user["user_id"]
+    }
+    
+    # Check if config already exists
+    existing = await db.system_config.find_one({"category": config.category, "key": config.key})
+    if existing:
+        # Update existing
+        await db.system_config.update_one(
+            {"category": config.category, "key": config.key},
+            {"$set": {
+                "value": config.value,
+                "description": config.description,
+                "is_active": config.is_active,
+                "updated_at": datetime.utcnow(),
+                "updated_by": current_user["user_id"]
+            }}
+        )
+        return {"message": "Configuration updated successfully"}
+    else:
+        # Create new
+        await db.system_config.insert_one(config_doc)
+        return {"message": "Configuration created successfully", "config_id": config_doc["config_id"]}
+
+@api_router.get("/system/config")
+async def get_system_configs(category: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+    """Get system configurations"""
+    if current_user["role"] not in ["Administrator", "Manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    query = {"is_active": True}
+    if category:
+        query["category"] = category
+    
+    configs = []
+    async for config in db.system_config.find(query).sort("category", 1):
+        configs.append(serialize_doc(config))
+    
+    return configs
+
+@api_router.put("/system/config/{category}/{key}")
+async def update_system_config(category: str, key: str, update_data: SystemConfigUpdate, current_user: dict = Depends(get_current_user)):
+    """Update specific system configuration"""
+    if current_user["role"] != "Administrator":
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    config = await db.system_config.find_one({"category": category, "key": key})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+    
+    update_doc = {
+        "value": update_data.value,
+        "updated_at": datetime.utcnow(),
+        "updated_by": current_user["user_id"]
+    }
+    
+    if update_data.description is not None:
+        update_doc["description"] = update_data.description
+    if update_data.is_active is not None:
+        update_doc["is_active"] = update_data.is_active
+    
+    await db.system_config.update_one(
+        {"category": category, "key": key},
+        {"$set": update_doc}
+    )
+    
+    return {"message": "Configuration updated successfully"}
+
+@api_router.get("/system/config/categories")
+async def get_config_categories(current_user: dict = Depends(get_current_user)):
+    """Get all configuration categories"""
+    if current_user["role"] not in ["Administrator", "Manager"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    categories = await db.system_config.distinct("category")
+    return {"categories": categories}
+
+# Initialize default system configurations
+async def create_default_configs():
+    """Create default system configurations"""
+    default_configs = [
+        {
+            "category": "general",
+            "key": "system_name",
+            "value": "Island Traffic Authority Driver's License Testing System",
+            "description": "Official system name"
+        },
+        {
+            "category": "certificates",
+            "key": "provisional_license_validity_days",
+            "value": "365",
+            "description": "Validity period for provisional licenses in days"
+        },
+        {
+            "category": "certificates",
+            "key": "full_license_validity_years",
+            "value": "5",
+            "description": "Validity period for full licenses in years"
+        },
+        {
+            "category": "notifications",
+            "key": "enable_email_notifications",
+            "value": "true",
+            "description": "Enable email notifications for important events"
+        },
+        {
+            "category": "security",
+            "key": "session_timeout_minutes",
+            "value": "30",
+            "description": "User session timeout in minutes"
+        }
+    ]
+    
+    for config in default_configs:
+        existing = await db.system_config.find_one({
+            "category": config["category"],
+            "key": config["key"]
+        })
+        
+        if not existing:
+            config_doc = {
+                "config_id": str(uuid.uuid4()),
+                "category": config["category"],
+                "key": config["key"],
+                "value": config["value"],
+                "description": config["description"],
+                "is_active": True,
+                "created_at": datetime.utcnow(),
+                "created_by": "system"
+            }
+            await db.system_config.insert_one(config_doc)
+
 # Include the router in the main app
 app.include_router(api_router)
 
