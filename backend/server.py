@@ -1632,6 +1632,851 @@ async def get_test_analytics(current_user: dict = Depends(get_current_user)):
         "results_by_test": serialize_doc(results_by_config)
     }
 
+# =============================================================================
+# PHASE 5: APPOINTMENT & VERIFICATION SYSTEM APIS
+# =============================================================================
+
+# Schedule Configuration APIs
+@api_router.post("/admin/schedule-config")
+async def create_schedule_config(config_data: ScheduleConfig, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can manage schedule
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can manage schedule configuration"
+        )
+    
+    config_doc = {
+        "id": str(uuid.uuid4()),
+        "day_of_week": config_data.day_of_week,
+        "time_slots": [slot.dict() for slot in config_data.time_slots],
+        "is_active": config_data.is_active,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Remove existing config for this day if any
+    await db.schedule_configs.delete_many({"day_of_week": config_data.day_of_week})
+    await db.schedule_configs.insert_one(config_doc)
+    
+    return {"message": "Schedule configuration saved successfully", "config_id": config_doc["id"]}
+
+@api_router.get("/admin/schedule-config")
+async def get_schedule_config(current_user: dict = Depends(get_current_user)):
+    # Only staff can view schedule configs
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view schedule configuration"
+        )
+    
+    configs = await db.schedule_configs.find({"is_active": True}).sort("day_of_week", 1).to_list(7)
+    return serialize_doc(configs)
+
+@api_router.get("/schedule-availability")
+async def get_schedule_availability(
+    date: str,  # "2024-07-15"
+    current_user: dict = Depends(get_current_user)
+):
+    """Get available time slots for a specific date"""
+    try:
+        appointment_date = datetime.strptime(date, "%Y-%m-%d")
+        day_of_week = appointment_date.weekday()  # 0=Monday, 6=Sunday
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        )
+    
+    # Check if date is a holiday
+    holiday = await db.holidays.find_one({"date": date})
+    if holiday:
+        return {"available_slots": [], "message": f"No appointments available - {holiday['name']}"}
+    
+    # Get schedule config for this day of week
+    schedule_config = await db.schedule_configs.find_one({"day_of_week": day_of_week, "is_active": True})
+    if not schedule_config:
+        return {"available_slots": [], "message": "No appointments available on this day"}
+    
+    # Get existing appointments for this date
+    existing_appointments = await db.appointments.find({
+        "appointment_date": date,
+        "status": {"$in": ["scheduled", "confirmed"]}
+    }).to_list(1000)
+    
+    # Calculate available slots
+    available_slots = []
+    for time_slot in schedule_config["time_slots"]:
+        if not time_slot["is_active"]:
+            continue
+            
+        slot_key = f"{time_slot['start_time']}-{time_slot['end_time']}"
+        booked_count = len([apt for apt in existing_appointments if apt["time_slot"] == slot_key])
+        available_capacity = time_slot["max_capacity"] - booked_count
+        
+        if available_capacity > 0:
+            available_slots.append({
+                "time_slot": slot_key,
+                "start_time": time_slot["start_time"],
+                "end_time": time_slot["end_time"],
+                "available_capacity": available_capacity,
+                "max_capacity": time_slot["max_capacity"]
+            })
+    
+    return {"available_slots": available_slots, "date": date}
+
+# Holiday Management APIs
+@api_router.post("/admin/holidays")
+async def create_holiday(holiday_data: Holiday, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can manage holidays
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can manage holidays"
+        )
+    
+    holiday_doc = {
+        "id": str(uuid.uuid4()),
+        "date": holiday_data.date,
+        "name": holiday_data.name,
+        "description": holiday_data.description,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.holidays.insert_one(holiday_doc)
+    return {"message": "Holiday created successfully", "holiday_id": holiday_doc["id"]}
+
+@api_router.get("/admin/holidays")
+async def get_holidays(current_user: dict = Depends(get_current_user)):
+    # Only staff can view holidays
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view holidays"
+        )
+    
+    holidays = await db.holidays.find().sort("date", 1).to_list(1000)
+    return serialize_doc(holidays)
+
+@api_router.delete("/admin/holidays/{holiday_id}")
+async def delete_holiday(holiday_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can delete holidays
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can delete holidays"
+        )
+    
+    result = await db.holidays.delete_one({"id": holiday_id})
+    if result.deleted_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Holiday not found"
+        )
+    
+    return {"message": "Holiday deleted successfully"}
+
+# Appointment Management APIs
+@api_router.post("/appointments")
+async def create_appointment(appointment_data: AppointmentCreate, current_user: dict = Depends(get_current_user)):
+    # Only approved candidates can book appointments
+    if current_user["role"] == "Candidate":
+        candidate = await db.candidates.find_one({"email": current_user["email"], "status": "approved"})
+        if not candidate:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only approved candidates can book appointments"
+            )
+        candidate_id = candidate["id"]
+    else:
+        # Staff members can book for candidates (testing purposes)
+        candidate_id = current_user.get("candidate_id", str(uuid.uuid4()))
+    
+    # Validate test configuration exists
+    test_config = await db.test_configurations.find_one({"id": appointment_data.test_config_id, "is_active": True})
+    if not test_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test configuration not found"
+        )
+    
+    # Check availability
+    availability = await get_schedule_availability(appointment_data.appointment_date, current_user)
+    available_slot = next(
+        (slot for slot in availability["available_slots"] if slot["time_slot"] == appointment_data.time_slot),
+        None
+    )
+    if not available_slot:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected time slot is not available"
+        )
+    
+    appointment_doc = {
+        "id": str(uuid.uuid4()),
+        "candidate_id": candidate_id,
+        "test_config_id": appointment_data.test_config_id,
+        "test_config_name": test_config["name"],
+        "appointment_date": appointment_data.appointment_date,
+        "time_slot": appointment_data.time_slot,
+        "status": "scheduled",  # scheduled, confirmed, cancelled, completed
+        "notes": appointment_data.notes,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "verification_status": "pending"  # pending, verified, failed
+    }
+    
+    await db.appointments.insert_one(appointment_doc)
+    return {"message": "Appointment booked successfully", "appointment_id": appointment_doc["id"]}
+
+@api_router.get("/appointments/my-appointments")
+async def get_my_appointments(current_user: dict = Depends(get_current_user)):
+    # Only candidates can view their appointments
+    if current_user["role"] != "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can view their appointments"
+        )
+    
+    candidate = await db.candidates.find_one({"email": current_user["email"]})
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate profile not found"
+        )
+    
+    appointments = await db.appointments.find({"candidate_id": candidate["id"]}).sort("appointment_date", 1).to_list(1000)
+    return serialize_doc(appointments)
+
+@api_router.get("/appointments")
+async def get_appointments(
+    date: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only staff can view all appointments
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view appointments"
+        )
+    
+    query_filter = {}
+    if date:
+        query_filter["appointment_date"] = date
+    if status:
+        query_filter["status"] = status
+    
+    appointments = await db.appointments.find(query_filter).sort("appointment_date", 1).to_list(1000)
+    
+    # Enrich with candidate information
+    enriched_appointments = []
+    for appointment in appointments:
+        candidate = await db.candidates.find_one({"id": appointment["candidate_id"]})
+        appointment_data = serialize_doc(appointment)
+        appointment_data["candidate_info"] = serialize_doc(candidate) if candidate else None
+        enriched_appointments.append(appointment_data)
+    
+    return enriched_appointments
+
+@api_router.put("/appointments/{appointment_id}")
+async def update_appointment(
+    appointment_id: str,
+    appointment_data: AppointmentUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Find appointment
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    # Check permissions
+    candidate = await db.candidates.find_one({"email": current_user["email"]})
+    is_owner = candidate and candidate["id"] == appointment["candidate_id"]
+    is_staff = current_user["role"] in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]
+    
+    if not (is_owner or is_staff):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this appointment"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in appointment_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.appointments.update_one(
+            {"id": appointment_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Appointment updated successfully"}
+
+@api_router.post("/appointments/{appointment_id}/reschedule")
+async def reschedule_appointment(
+    appointment_id: str,
+    reschedule_data: AppointmentReschedule,
+    current_user: dict = Depends(get_current_user)
+):
+    # Find appointment
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    # Check permissions (same as update)
+    candidate = await db.candidates.find_one({"email": current_user["email"]})
+    is_owner = candidate and candidate["id"] == appointment["candidate_id"]
+    is_staff = current_user["role"] in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]
+    
+    if not (is_owner or is_staff):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to reschedule this appointment"
+        )
+    
+    # Check new slot availability
+    availability = await get_schedule_availability(reschedule_data.new_date, current_user)
+    available_slot = next(
+        (slot for slot in availability["available_slots"] if slot["time_slot"] == reschedule_data.new_time_slot),
+        None
+    )
+    if not available_slot:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected new time slot is not available"
+        )
+    
+    # Update appointment
+    update_data = {
+        "appointment_date": reschedule_data.new_date,
+        "time_slot": reschedule_data.new_time_slot,
+        "notes": f"{appointment.get('notes', '')} | Rescheduled: {reschedule_data.reason or 'No reason provided'}",
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.appointments.update_one(
+        {"id": appointment_id},
+        {"$set": update_data}
+    )
+    
+    return {"message": "Appointment rescheduled successfully"}
+
+# Identity Verification APIs
+@api_router.post("/appointments/{appointment_id}/verify-identity")
+async def create_identity_verification(
+    appointment_id: str,
+    verification_data: IdentityVerification,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Officers, Managers, and Administrators can perform verification
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform identity verification"
+        )
+    
+    # Validate appointment exists
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    # Check if verification already exists
+    existing_verification = await db.identity_verifications.find_one({"appointment_id": appointment_id})
+    if existing_verification:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Identity verification already exists for this appointment"
+        )
+    
+    verification_doc = {
+        "id": str(uuid.uuid4()),
+        "candidate_id": verification_data.candidate_id,
+        "appointment_id": appointment_id,
+        "id_document_type": verification_data.id_document_type,
+        "id_document_number": verification_data.id_document_number,
+        "verification_photos": [photo.dict() for photo in verification_data.verification_photos],
+        "photo_match_confirmed": verification_data.photo_match_confirmed,
+        "id_document_match_confirmed": verification_data.id_document_match_confirmed,
+        "verification_notes": verification_data.verification_notes,
+        "status": "verified" if (verification_data.photo_match_confirmed and verification_data.id_document_match_confirmed) else "failed",
+        "verified_by": current_user["email"],
+        "verified_by_name": current_user["full_name"],
+        "verified_at": datetime.utcnow(),
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.identity_verifications.insert_one(verification_doc)
+    
+    # Update appointment verification status
+    verification_status = "verified" if verification_doc["status"] == "verified" else "failed"
+    await db.appointments.update_one(
+        {"id": appointment_id},
+        {"$set": {"verification_status": verification_status, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"message": "Identity verification completed", "verification_id": verification_doc["id"], "status": verification_doc["status"]}
+
+@api_router.get("/appointments/{appointment_id}/verification")
+async def get_identity_verification(
+    appointment_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    # Staff and appointment owner can view verification
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    candidate = await db.candidates.find_one({"email": current_user["email"]})
+    is_owner = candidate and candidate["id"] == appointment["candidate_id"]
+    is_staff = current_user["role"] in ["Driver Assessment Officer", "Manager", "Administrator", "Regional Director"]
+    
+    if not (is_owner or is_staff):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this verification"
+        )
+    
+    verification = await db.identity_verifications.find_one({"appointment_id": appointment_id})
+    return serialize_doc(verification) if verification else None
+
+@api_router.put("/verifications/{verification_id}")
+async def update_identity_verification(
+    verification_id: str,
+    verification_data: VerificationUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Officers, Managers, and Administrators can update verification
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update identity verification"
+        )
+    
+    verification = await db.identity_verifications.find_one({"id": verification_id})
+    if not verification:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Identity verification not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in verification_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        
+        # Update status based on confirmation flags
+        if "photo_match_confirmed" in update_data or "id_document_match_confirmed" in update_data:
+            photo_match = update_data.get("photo_match_confirmed", verification["photo_match_confirmed"])
+            id_match = update_data.get("id_document_match_confirmed", verification["id_document_match_confirmed"])
+            update_data["status"] = "verified" if (photo_match and id_match) else "failed"
+        
+        await db.identity_verifications.update_one(
+            {"id": verification_id},
+            {"$set": update_data}
+        )
+        
+        # Update appointment verification status if needed
+        if "status" in update_data:
+            await db.appointments.update_one(
+                {"id": verification["appointment_id"]},
+                {"$set": {"verification_status": update_data["status"], "updated_at": datetime.utcnow()}}
+            )
+    
+    return {"message": "Identity verification updated successfully"}
+
+# Enhanced Admin Management APIs
+@api_router.post("/admin/users")
+async def create_user_admin(user_data: UserCreate, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create users
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create users"
+        )
+    
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": user_data.email})
+    if existing_user and not existing_user.get("is_deleted", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    if user_data.role not in USER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid role"
+        )
+    
+    # Hash password
+    hashed_password = get_password_hash(user_data.password)
+    
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "email": user_data.email,
+        "hashed_password": hashed_password,
+        "full_name": user_data.full_name,
+        "role": user_data.role,
+        "is_active": user_data.is_active,
+        "is_deleted": False,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.users.insert_one(user_doc)
+    return {"message": "User created successfully", "user_id": user_doc["id"]}
+
+@api_router.get("/admin/users")
+async def get_all_users(
+    include_deleted: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can view all users
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can view all users"
+        )
+    
+    query_filter = {}
+    if not include_deleted:
+        query_filter["is_deleted"] = {"$ne": True}
+    
+    users = await db.users.find(query_filter).sort("created_at", -1).to_list(1000)
+    
+    # Remove sensitive data
+    for user in users:
+        user.pop("hashed_password", None)
+    
+    return serialize_doc(users)
+
+@api_router.put("/admin/users/{user_id}")
+async def update_user_admin(
+    user_id: str,
+    user_data: UserUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update users
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update users"
+        )
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in user_data.dict(exclude_unset=True).items():
+        if value is not None:
+            if field == "password":
+                update_data["hashed_password"] = get_password_hash(value)
+            else:
+                update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.users.update_one(
+            {"id": user_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "User updated successfully"}
+
+@api_router.delete("/admin/users/{user_id}")
+async def delete_user_admin(user_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can delete users
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can delete users"
+        )
+    
+    # Don't allow deleting self
+    if user_id == current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account"
+        )
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Soft delete
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_deleted": True, "is_active": False, "deleted_at": datetime.utcnow(), "deleted_by": current_user["email"]}}
+    )
+    
+    return {"message": "User deleted successfully"}
+
+@api_router.post("/admin/users/{user_id}/restore")
+async def restore_user_admin(user_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can restore users
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can restore users"
+        )
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_deleted": False, "is_active": True, "restored_at": datetime.utcnow(), "restored_by": current_user["email"]}}
+    )
+    
+    return {"message": "User restored successfully"}
+
+@api_router.post("/admin/candidates")
+async def create_candidate_admin(candidate_data: CandidateAdminCreate, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create candidates
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create candidates"
+        )
+    
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": candidate_data.email})
+    if existing_user and not existing_user.get("is_deleted", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Hash password
+    hashed_password = get_password_hash(candidate_data.password)
+    
+    candidate_id = str(uuid.uuid4())
+    
+    # Create user document
+    user_doc = {
+        "id": str(uuid.uuid4()),
+        "email": candidate_data.email,
+        "hashed_password": hashed_password,
+        "full_name": candidate_data.full_name,
+        "role": "Candidate",
+        "is_active": True,
+        "is_deleted": False,
+        "candidate_id": candidate_id,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    # Create candidate profile document
+    candidate_doc = {
+        "id": candidate_id,
+        "user_id": user_doc["id"],
+        "email": candidate_data.email,
+        "full_name": candidate_data.full_name,
+        "date_of_birth": candidate_data.date_of_birth,
+        "home_address": candidate_data.home_address,
+        "trn": candidate_data.trn,
+        "photograph": candidate_data.photograph,
+        "status": candidate_data.status,
+        "is_deleted": False,
+        "created_by": current_user["email"],
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+        "approved_by": None,
+        "approved_at": None,
+        "approval_notes": None
+    }
+    
+    await db.users.insert_one(user_doc)
+    await db.candidates.insert_one(candidate_doc)
+    
+    return {"message": "Candidate created successfully", "candidate_id": candidate_id}
+
+@api_router.get("/admin/candidates")
+async def get_all_candidates_admin(
+    include_deleted: bool = False,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can view all candidates
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can view all candidates"
+        )
+    
+    query_filter = {}
+    if not include_deleted:
+        query_filter["is_deleted"] = {"$ne": True}
+    
+    candidates = await db.candidates.find(query_filter).sort("created_at", -1).to_list(1000)
+    return serialize_doc(candidates)
+
+@api_router.put("/admin/candidates/{candidate_id}")
+async def update_candidate_admin(
+    candidate_id: str,
+    candidate_data: CandidateAdminUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update candidates
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update candidates"
+        )
+    
+    candidate = await db.candidates.find_one({"id": candidate_id})
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found"
+        )
+    
+    # Build update document
+    update_data = {}
+    for field, value in candidate_data.dict(exclude_unset=True).items():
+        if value is not None:
+            update_data[field] = value
+    
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        await db.candidates.update_one(
+            {"id": candidate_id},
+            {"$set": update_data}
+        )
+    
+    return {"message": "Candidate updated successfully"}
+
+@api_router.delete("/admin/candidates/{candidate_id}")
+async def delete_candidate_admin(candidate_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can delete candidates
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can delete candidates"
+        )
+    
+    candidate = await db.candidates.find_one({"id": candidate_id})
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found"
+        )
+    
+    # Soft delete candidate
+    await db.candidates.update_one(
+        {"id": candidate_id},
+        {"$set": {"is_deleted": True, "deleted_at": datetime.utcnow(), "deleted_by": current_user["email"]}}
+    )
+    
+    # Soft delete associated user
+    await db.users.update_one(
+        {"candidate_id": candidate_id},
+        {"$set": {"is_deleted": True, "is_active": False, "deleted_at": datetime.utcnow(), "deleted_by": current_user["email"]}}
+    )
+    
+    return {"message": "Candidate deleted successfully"}
+
+@api_router.post("/admin/candidates/{candidate_id}/restore")
+async def restore_candidate_admin(candidate_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can restore candidates
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can restore candidates"
+        )
+    
+    candidate = await db.candidates.find_one({"id": candidate_id})
+    if not candidate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found"
+        )
+    
+    # Restore candidate
+    await db.candidates.update_one(
+        {"id": candidate_id},
+        {"$set": {"is_deleted": False, "restored_at": datetime.utcnow(), "restored_by": current_user["email"]}}
+    )
+    
+    # Restore associated user
+    await db.users.update_one(
+        {"candidate_id": candidate_id},
+        {"$set": {"is_deleted": False, "is_active": True, "restored_at": datetime.utcnow(), "restored_by": current_user["email"]}}
+    )
+    
+    return {"message": "Candidate restored successfully"}
+
+# Enhanced Test Access Control
+@api_router.get("/tests/access-check/{test_config_id}")
+async def check_test_access(test_config_id: str, current_user: dict = Depends(get_current_user)):
+    """Check if candidate can access test based on verification status"""
+    if current_user["role"] != "Candidate":
+        return {"access_granted": True, "message": "Staff access granted"}
+    
+    candidate = await db.candidates.find_one({"email": current_user["email"], "status": "approved"})
+    if not candidate:
+        return {"access_granted": False, "message": "Candidate not approved"}
+    
+    # Find active appointment for this test config
+    appointment = await db.appointments.find_one({
+        "candidate_id": candidate["id"],
+        "test_config_id": test_config_id,
+        "status": {"$in": ["scheduled", "confirmed"]},
+        "verification_status": "verified"
+    })
+    
+    if not appointment:
+        return {
+            "access_granted": False,
+            "message": "No verified appointment found for this test. Please complete identity verification with an officer."
+        }
+    
+    # Check if appointment is for today
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    if appointment["appointment_date"] != today:
+        return {
+            "access_granted": False,
+            "message": f"Test is scheduled for {appointment['appointment_date']}. Access only available on appointment date."
+        }
+    
+    return {"access_granted": True, "message": "Access granted", "appointment_id": appointment["id"]}
+
 # Include the router in the main app
 app.include_router(api_router)
 
