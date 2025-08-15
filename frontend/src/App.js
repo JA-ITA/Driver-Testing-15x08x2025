@@ -3292,6 +3292,47 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Phase 6: Multi-Stage Testing System Routes */}
+          <Route
+            path="/multi-stage-configs"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <MultiStageTestConfigurations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/evaluation-criteria"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <EvaluationCriteriaManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/officer-assignments"
+            element={
+              <ProtectedRoute allowedRoles={['Manager', 'Administrator']}>
+                <OfficerAssignments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-assignments"
+            element={
+              <ProtectedRoute allowedRoles={['Driver Assessment Officer']}>
+                <MyAssignments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/multi-stage-analytics"
+            element={
+              <ProtectedRoute allowedRoles={['Manager', 'Administrator']}>
+                <MultiStageAnalytics />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
