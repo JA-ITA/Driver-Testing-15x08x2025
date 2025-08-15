@@ -960,6 +960,86 @@ class TimeExtension(BaseModel):
     additional_minutes: int
     reason: Optional[str] = None
 
+# =============================================================================
+# PHASE 6: MULTI-STAGE TESTING SYSTEM MODELS
+# =============================================================================
+
+# Multi-Stage Test Configuration Models
+class MultiStageTestConfiguration(BaseModel):
+    name: str
+    description: Optional[str] = None
+    category_id: str
+    # Stage 1: Written Test
+    written_total_questions: int = 20
+    written_pass_mark_percentage: int = 75
+    written_time_limit_minutes: int = 25
+    written_difficulty_distribution: Optional[dict] = {"easy": 30, "medium": 50, "hard": 20}
+    # Stage 2: Yard Test (Practical)
+    yard_pass_mark_percentage: int = 75
+    # Stage 3: Road Test (Practical)
+    road_pass_mark_percentage: int = 75
+    is_active: bool = True
+    requires_officer_assignment: bool = True
+
+class MultiStageTestConfigurationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    written_total_questions: Optional[int] = None
+    written_pass_mark_percentage: Optional[int] = None
+    written_time_limit_minutes: Optional[int] = None
+    written_difficulty_distribution: Optional[dict] = None
+    yard_pass_mark_percentage: Optional[int] = None
+    road_pass_mark_percentage: Optional[int] = None
+    is_active: Optional[bool] = None
+    requires_officer_assignment: Optional[bool] = None
+
+# Evaluation Criteria Models
+class EvaluationCriterion(BaseModel):
+    name: str
+    description: Optional[str] = None
+    stage: str  # "yard" or "road"
+    max_score: int = 10
+    is_critical: bool = False  # If true, must pass this criterion to pass stage
+    is_active: bool = True
+
+class EvaluationCriterionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    max_score: Optional[int] = None
+    is_critical: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+# Multi-Stage Test Session Models
+class MultiStageTestSession(BaseModel):
+    test_config_id: str
+    candidate_id: str
+    appointment_id: Optional[str] = None
+
+class StageEvaluation(BaseModel):
+    criterion_id: str
+    score: int
+    notes: Optional[str] = None
+
+class StageResult(BaseModel):
+    session_id: str
+    stage: str  # "written", "yard", "road"
+    evaluations: List[StageEvaluation] = []  # Empty for written test
+    passed: Optional[bool] = None
+    evaluated_by: Optional[str] = None  # Officer email
+    evaluation_notes: Optional[str] = None
+
+# Officer Assignment Models
+class OfficerAssignment(BaseModel):
+    session_id: str
+    officer_email: str
+    stage: str  # "yard" or "road"
+    assigned_by: str
+    notes: Optional[str] = None
+
+class OfficerAssignmentUpdate(BaseModel):
+    officer_email: Optional[str] = None
+    notes: Optional[str] = None
+
 # Test Configuration routes
 @api_router.post("/test-configs")
 async def create_test_config(config_data: TestConfiguration, current_user: dict = Depends(get_current_user)):
