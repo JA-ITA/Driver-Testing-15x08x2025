@@ -3913,7 +3913,7 @@ async def update_certificate(certificate_id: str, update_data: CertificateUpdate
     if not cert:
         raise HTTPException(status_code=404, detail="Certificate not found")
     
-    update_doc = {"updated_at": datetime.utcnow(), "updated_by": current_user["user_id"]}
+    update_doc = {"updated_at": datetime.utcnow(), "updated_by": current_user["id"]}
     
     if update_data.status:
         update_doc["status"] = update_data.status
