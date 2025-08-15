@@ -967,6 +967,411 @@ class ITABackendTester:
             self.log_test("Candidate Access to Analytics (Should Fail)", success,
                          f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
 
+    # =============================================================================
+    # PHASE 5: APPOINTMENT & VERIFICATION SYSTEM TESTS
+    # =============================================================================
+
+    def test_schedule_configuration(self):
+        """Test Phase 5: Schedule Configuration APIs"""
+        print("📅 Testing Phase 5: Schedule Configuration APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Schedule Config", False, "Admin login failed")
+            return
+        
+        # Test creating schedule configuration
+        schedule_config_data = {
+            "day_of_week": 1,  # Tuesday
+            "time_slots": [
+                {
+                    "start_time": "09:00",
+                    "end_time": "10:00",
+                    "max_capacity": 5,
+                    "is_active": True
+                },
+                {
+                    "start_time": "10:00",
+                    "end_time": "11:00",
+                    "max_capacity": 3,
+                    "is_active": True
+                },
+                {
+                    "start_time": "14:00",
+                    "end_time": "15:00",
+                    "max_capacity": 4,
+                    "is_active": True
+                }
+            ],
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'admin/schedule-config', schedule_config_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Schedule Configuration", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.schedule_config_id = response.get('config_id')
+        
+        # Test getting schedule configuration
+        success, response = self.make_request('GET', 'admin/schedule-config', token=self.tokens['admin'])
+        self.log_test("Get Schedule Configuration", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} schedule configs" if success else f"Error: {response}")
+        
+        # Test unauthorized access to schedule config
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'admin/schedule-config', 
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to Schedule Config (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_holiday_management(self):
+        """Test Phase 5: Holiday Management APIs"""
+        print("🏖️ Testing Phase 5: Holiday Management APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Holiday Management", False, "Admin login failed")
+            return
+        
+        # Test creating holidays
+        holiday_data = {
+            "date": "2024-12-25",
+            "name": "Christmas Day",
+            "description": "Public holiday - no appointments available"
+        }
+        
+        success, response = self.make_request('POST', 'admin/holidays', holiday_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Holiday", success,
+                     f"Holiday ID: {response.get('holiday_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.holiday_id = response.get('holiday_id')
+        
+        # Test getting holidays
+        success, response = self.make_request('GET', 'admin/holidays', token=self.tokens['admin'])
+        self.log_test("Get All Holidays", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} holidays" if success else f"Error: {response}")
+        
+        # Test deleting holiday
+        if hasattr(self, 'holiday_id'):
+            success, response = self.make_request('DELETE', f'admin/holidays/{self.holiday_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Delete Holiday", success,
+                         f"Holiday deleted successfully" if success else f"Error: {response}")
+        
+        # Test unauthorized holiday creation
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'admin/holidays', holiday_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Create Holiday (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_schedule_availability(self):
+        """Test Phase 5: Schedule Availability Check"""
+        print("🗓️ Testing Phase 5: Schedule Availability Check")
+        
+        if 'test_candidate' not in self.tokens:
+            self.log_test("Candidate Token Required for Availability Check", False, "Candidate login failed")
+            return
+        
+        # Test getting availability for a specific date
+        test_date = "2024-07-16"  # Tuesday
+        success, response = self.make_request('GET', f'schedule-availability?date={test_date}',
+                                            token=self.tokens['test_candidate'])
+        self.log_test("Get Schedule Availability", success,
+                     f"Available slots: {len(response.get('available_slots', []))}" if success else f"Error: {response}")
+        
+        # Test invalid date format
+        success, response = self.make_request('GET', 'schedule-availability?date=invalid-date',
+                                            token=self.tokens['test_candidate'], expected_status=400)
+        self.log_test("Invalid Date Format (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_appointment_booking(self):
+        """Test Phase 5: Appointment Booking APIs"""
+        print("📝 Testing Phase 5: Appointment Booking APIs")
+        
+        if 'test_candidate' not in self.tokens or not hasattr(self, 'test_config_id'):
+            self.log_test("Prerequisites Missing for Appointment Booking", False, 
+                         "Candidate token or test config missing")
+            return
+        
+        # Test booking an appointment
+        appointment_data = {
+            "test_config_id": self.test_config_id,
+            "appointment_date": "2024-07-16",
+            "time_slot": "09:00-10:00",
+            "notes": "First driving test appointment"
+        }
+        
+        success, response = self.make_request('POST', 'appointments', appointment_data,
+                                            token=self.tokens['test_candidate'], expected_status=200)
+        self.log_test("Book Appointment", success,
+                     f"Appointment ID: {response.get('appointment_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.appointment_id = response.get('appointment_id')
+        
+        # Test getting candidate's appointments
+        success, response = self.make_request('GET', 'appointments/my-appointments',
+                                            token=self.tokens['test_candidate'])
+        self.log_test("Get My Appointments", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} appointments" if success else f"Error: {response}")
+        
+        # Test staff getting all appointments
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'appointments', token=self.tokens['officer'])
+            self.log_test("Get All Appointments (Staff)", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} appointments" if success else f"Error: {response}")
+        
+        # Test updating appointment
+        if hasattr(self, 'appointment_id') and 'officer' in self.tokens:
+            update_data = {
+                "status": "confirmed",
+                "notes": "Appointment confirmed by staff"
+            }
+            
+            success, response = self.make_request('PUT', f'appointments/{self.appointment_id}', update_data,
+                                                token=self.tokens['officer'])
+            self.log_test("Update Appointment Status", success,
+                         f"Appointment updated successfully" if success else f"Error: {response}")
+
+    def test_appointment_rescheduling(self):
+        """Test Phase 5: Appointment Rescheduling"""
+        print("🔄 Testing Phase 5: Appointment Rescheduling")
+        
+        if not hasattr(self, 'appointment_id') or 'test_candidate' not in self.tokens:
+            self.log_test("Prerequisites Missing for Rescheduling", False, "Appointment or candidate token missing")
+            return
+        
+        # Test rescheduling appointment
+        reschedule_data = {
+            "appointment_id": self.appointment_id,
+            "new_date": "2024-07-17",
+            "new_time_slot": "10:00-11:00",
+            "reason": "Personal conflict with original time"
+        }
+        
+        success, response = self.make_request('POST', f'appointments/{self.appointment_id}/reschedule',
+                                            reschedule_data, token=self.tokens['test_candidate'])
+        self.log_test("Reschedule Appointment", success,
+                     f"Appointment rescheduled successfully" if success else f"Error: {response}")
+
+    def test_identity_verification(self):
+        """Test Phase 5: Identity Verification APIs"""
+        print("🆔 Testing Phase 5: Identity Verification APIs")
+        
+        if not hasattr(self, 'appointment_id') or 'officer' not in self.tokens:
+            self.log_test("Prerequisites Missing for Identity Verification", False, 
+                         "Appointment or officer token missing")
+            return
+        
+        # Get candidate ID for verification
+        if 'test_candidate' in self.tokens:
+            candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                         token=self.tokens['test_candidate'])
+            if candidate_profile_response[0]:
+                candidate_id = candidate_profile_response[1].get('id')
+                
+                # Create sample base64 images for verification
+                sample_id_photo = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                sample_live_photo = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+                
+                # Test creating identity verification
+                verification_data = {
+                    "candidate_id": candidate_id,
+                    "appointment_id": self.appointment_id,
+                    "id_document_type": "national_id",
+                    "id_document_number": "ID123456789",
+                    "verification_photos": [
+                        {
+                            "photo_data": sample_id_photo,
+                            "photo_type": "id_document",
+                            "notes": "National ID card photo"
+                        },
+                        {
+                            "photo_data": sample_live_photo,
+                            "photo_type": "live_capture",
+                            "notes": "Live photo capture"
+                        }
+                    ],
+                    "photo_match_confirmed": True,
+                    "id_document_match_confirmed": True,
+                    "verification_notes": "Identity verified successfully"
+                }
+                
+                success, response = self.make_request('POST', f'appointments/{self.appointment_id}/verify-identity',
+                                                    verification_data, token=self.tokens['officer'])
+                self.log_test("Create Identity Verification", success,
+                             f"Verification ID: {response.get('verification_id', 'N/A')}" if success else f"Error: {response}")
+                
+                if success:
+                    self.verification_id = response.get('verification_id')
+                
+                # Test getting verification
+                success, response = self.make_request('GET', f'appointments/{self.appointment_id}/verification',
+                                                    token=self.tokens['officer'])
+                self.log_test("Get Identity Verification", success,
+                             f"Verification Status: {response.get('status', 'N/A')}" if success else f"Error: {response}")
+                
+                # Test updating verification
+                if hasattr(self, 'verification_id'):
+                    update_data = {
+                        "verification_notes": "Updated verification notes",
+                        "status": "verified"
+                    }
+                    
+                    success, response = self.make_request('PUT', f'verifications/{self.verification_id}',
+                                                        update_data, token=self.tokens['officer'])
+                    self.log_test("Update Identity Verification", success,
+                                 f"Verification updated successfully" if success else f"Error: {response}")
+
+    def test_enhanced_test_access_control(self):
+        """Test Phase 5: Enhanced Test Access Control"""
+        print("🔐 Testing Phase 5: Enhanced Test Access Control")
+        
+        if not hasattr(self, 'test_config_id') or 'test_candidate' not in self.tokens:
+            self.log_test("Prerequisites Missing for Access Control", False, 
+                         "Test config or candidate token missing")
+            return
+        
+        # Test access check before verification
+        success, response = self.make_request('GET', f'tests/access-check/{self.test_config_id}',
+                                            token=self.tokens['test_candidate'])
+        self.log_test("Test Access Check", success,
+                     f"Access Granted: {response.get('access_granted', 'N/A')}, Message: {response.get('message', 'N/A')}" if success else f"Error: {response}")
+
+    def test_enhanced_admin_management(self):
+        """Test Phase 5: Enhanced Admin Management APIs"""
+        print("👥 Testing Phase 5: Enhanced Admin Management APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Enhanced Management", False, "Admin login failed")
+            return
+        
+        # Test creating user via admin
+        user_data = {
+            "email": "new.officer@ita.gov",
+            "password": "newpassword123",
+            "full_name": "New Assessment Officer",
+            "role": "Driver Assessment Officer",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'admin/users', user_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Admin Create User", success,
+                     f"User ID: {response.get('user_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.admin_created_user_id = response.get('user_id')
+        
+        # Test getting all users
+        success, response = self.make_request('GET', 'admin/users', token=self.tokens['admin'])
+        self.log_test("Admin Get All Users", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} users" if success else f"Error: {response}")
+        
+        # Test updating user
+        if hasattr(self, 'admin_created_user_id'):
+            update_data = {
+                "full_name": "Updated Assessment Officer",
+                "is_active": False
+            }
+            
+            success, response = self.make_request('PUT', f'admin/users/{self.admin_created_user_id}',
+                                                update_data, token=self.tokens['admin'])
+            self.log_test("Admin Update User", success,
+                         f"User updated successfully" if success else f"Error: {response}")
+        
+        # Test soft delete user
+        if hasattr(self, 'admin_created_user_id'):
+            success, response = self.make_request('DELETE', f'admin/users/{self.admin_created_user_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Admin Soft Delete User", success,
+                         f"User soft deleted successfully" if success else f"Error: {response}")
+        
+        # Test restore user
+        if hasattr(self, 'admin_created_user_id'):
+            success, response = self.make_request('POST', f'admin/users/{self.admin_created_user_id}/restore',
+                                                {}, token=self.tokens['admin'])
+            self.log_test("Admin Restore User", success,
+                         f"User restored successfully" if success else f"Error: {response}")
+        
+        # Test creating candidate via admin
+        candidate_data = {
+            "email": "admin.candidate@example.com",
+            "password": "admincandidate123",
+            "full_name": "Admin Created Candidate",
+            "date_of_birth": "1992-03-15",
+            "home_address": "456 Admin Street, Admin City",
+            "trn": "999-888-777",
+            "status": "approved"
+        }
+        
+        success, response = self.make_request('POST', 'admin/candidates', candidate_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Admin Create Candidate", success,
+                     f"Candidate ID: {response.get('candidate_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.admin_created_candidate_id = response.get('candidate_id')
+        
+        # Test getting all candidates via admin
+        success, response = self.make_request('GET', 'admin/candidates', token=self.tokens['admin'])
+        self.log_test("Admin Get All Candidates", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} candidates" if success else f"Error: {response}")
+        
+        # Test updating candidate via admin
+        if hasattr(self, 'admin_created_candidate_id'):
+            update_data = {
+                "full_name": "Updated Admin Candidate",
+                "status": "pending"
+            }
+            
+            success, response = self.make_request('PUT', f'admin/candidates/{self.admin_created_candidate_id}',
+                                                update_data, token=self.tokens['admin'])
+            self.log_test("Admin Update Candidate", success,
+                         f"Candidate updated successfully" if success else f"Error: {response}")
+        
+        # Test soft delete candidate
+        if hasattr(self, 'admin_created_candidate_id'):
+            success, response = self.make_request('DELETE', f'admin/candidates/{self.admin_created_candidate_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Admin Soft Delete Candidate", success,
+                         f"Candidate soft deleted successfully" if success else f"Error: {response}")
+        
+        # Test restore candidate
+        if hasattr(self, 'admin_created_candidate_id'):
+            success, response = self.make_request('POST', f'admin/candidates/{self.admin_created_candidate_id}/restore',
+                                                {}, token=self.tokens['admin'])
+            self.log_test("Admin Restore Candidate", success,
+                         f"Candidate restored successfully" if success else f"Error: {response}")
+        
+        # Test unauthorized admin operations
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'admin/users', user_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Admin Create User (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def run_phase_5_tests(self):
+        """Run Phase 5 specific tests"""
+        print("🔬 Running Phase 5: Appointment & Verification System Tests")
+        print()
+        
+        try:
+            self.test_schedule_configuration()
+            self.test_holiday_management()
+            self.test_schedule_availability()
+            self.test_appointment_booking()
+            self.test_appointment_rescheduling()
+            self.test_identity_verification()
+            self.test_enhanced_test_access_control()
+            self.test_enhanced_admin_management()
+        except Exception as e:
+            print(f"💥 Error during Phase 5 testing: {str(e)}")
+
     def run_phase_3_tests(self):
         """Run Phase 3 specific tests"""
         print("🔬 Running Phase 3: Question Bank Management Tests")
