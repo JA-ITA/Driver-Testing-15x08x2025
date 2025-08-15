@@ -4318,7 +4318,7 @@ async def update_system_config(category: str, key: str, update_data: SystemConfi
     update_doc = {
         "value": update_data.value,
         "updated_at": datetime.utcnow(),
-        "updated_by": current_user["user_id"]
+        "updated_by": current_user["id"]
     }
     
     if update_data.description is not None:
