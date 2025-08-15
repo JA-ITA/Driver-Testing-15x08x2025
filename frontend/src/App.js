@@ -9138,12 +9138,12 @@ user2@example.com,Jane Smith,Manager,password123'
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Category Filter (Optional)</Label>
-                  <Select value={exportCategory} onValueChange={setExportCategory}>
+                  <Select value={exportCategory || "all"} onValueChange={(value) => setExportCategory(value === "all" ? "" : value)}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Categories" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Categories</SelectItem>
+                      <SelectItem value="all">All Categories</SelectItem>
                       {categories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.name}
