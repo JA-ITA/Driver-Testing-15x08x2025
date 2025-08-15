@@ -2158,6 +2158,38 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/test-configs"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator', 'Regional Director', 'Manager']}>
+                <TestConfigurations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tests"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <TakeTest />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/test-results"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <TestResults />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/test-management"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator', 'Regional Director', 'Manager', 'Driver Assessment Officer']}>
+                <TestManagement />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
