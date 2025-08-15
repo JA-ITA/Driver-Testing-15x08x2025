@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 class UserManagementTester:
-    def __init__(self, base_url="https://license-cert-system.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://testbank-revive.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.admin_token = None
         self.test_users = []

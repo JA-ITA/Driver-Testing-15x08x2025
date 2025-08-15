@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 class ITABackendTester:
-    def __init__(self, base_url="https://license-cert-system.preview.emergentagent.com/api"):
+    def __init__(self, base_url="https://testbank-revive.preview.emergentagent.com/api"):
         self.base_url = base_url
         self.tokens = {}  # Store tokens for different users
         self.users = {}   # Store user data
