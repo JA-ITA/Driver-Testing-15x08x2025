@@ -1004,6 +1004,7 @@ class ITABackendTester:
         print()
         
         try:
+            # Phase 1 & 2: User Management and Candidate Registration
             self.test_user_registration()
             self.test_user_login()
             self.test_auth_me()
@@ -1012,6 +1013,12 @@ class ITABackendTester:
             self.test_staff_candidate_access()
             self.test_dashboard_stats()
             self.test_role_based_access_control()
+            
+            # Phase 3: Question Bank Management
+            self.run_phase_3_tests()
+            
+            # Phase 4: Test Taking System
+            self.run_phase_4_tests()
             
         except Exception as e:
             print(f"💥 Critical error during testing: {str(e)}")
