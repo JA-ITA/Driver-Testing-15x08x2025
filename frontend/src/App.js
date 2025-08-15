@@ -3320,28 +3320,4 @@ const TestManagement = () => {
   );
 };
 
-// Unauthorized Component
-const Unauthorized = () => (
-  <div className="min-h-screen bg-gradient-to-br from-red-50 via-slate-50 to-orange-50 flex items-center justify-center p-4">
-    <Card className="w-full max-w-md shadow-xl border-0 backdrop-blur-sm bg-white/90">
-      <CardHeader className="text-center space-y-4">
-        <div className="mx-auto w-16 h-16 bg-gradient-to-br from-red-500 to-orange-600 rounded-full flex items-center justify-center">
-          <XCircle className="h-8 w-8 text-white" />
-        </div>
-        <CardTitle className="text-2xl font-bold text-slate-800">Access Denied</CardTitle>
-        <CardDescription className="text-slate-600">
-          You don't have permission to access this page.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="text-center">
-        <Link to="/dashboard">
-          <Button className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white">
-            Go to Dashboard
-          </Button>
-        </Link>
-      </CardContent>
-    </Card>
-  </div>
-);
-
 export default App;
