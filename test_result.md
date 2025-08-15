@@ -273,6 +273,18 @@ backend:
         agent: "testing"
         comment: "COMPREHENSIVE TESTING COMPLETED: Phase 7 Failed Stage Tracking APIs working excellently. ✅ Record Failed Stages (officers can record failed test stages with scores and reasons). ✅ Get Candidate Failed Stages (both officer and candidate access). ✅ Get Failed Stages Analytics (comprehensive analytics with stage statistics and resit success rates). ✅ Role-based access control (Officers record, Candidates view own, Administrators access analytics). ✅ Data validation and scoring system working correctly. All failed stage tracking functionality operational."
 
+  - task: "User Management APIs"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "COMPREHENSIVE TESTING COMPLETED: All User Management APIs working excellently with 100% success rate (27/27 tests passed). ✅ User Creation API (POST /api/admin/users) with all role validation and email validation. ✅ User Listing API (GET /api/admin/users) with include_deleted parameter and security checks. ✅ User Update API (PUT /api/admin/users/{user_id}) with profile, password, and role updates. ✅ User Deletion (DELETE) and Restoration (POST restore) APIs with soft delete functionality. ✅ Comprehensive authorization testing - only Administrators can access, other roles properly blocked. ✅ Self-deletion prevention working. All functionality operational and secure."
+
 frontend:
   - task: "Question Approvals Interface"
     implemented: true
