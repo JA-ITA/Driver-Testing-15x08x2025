@@ -80,7 +80,10 @@ def save_answer(token, session_id, question_id, answer_type, answer_value):
         }
     
     response = requests.post(f"{BASE_URL}/tests/session/{session_id}/answer", json=data, headers=headers)
-    return response.status_code == 200, response.json()
+    try:
+        return response.status_code == 200, response.json()
+    except:
+        return response.status_code == 200, {"status_code": response.status_code, "text": response.text}
 
 def submit_test(token, session_id, answers):
     """Submit test"""
