@@ -2069,6 +2069,1039 @@ const Unauthorized = () => (
   </div>
 );
 
+// =============================================================================
+// PHASE 5: APPOINTMENT & VERIFICATION SYSTEM COMPONENTS
+// =============================================================================
+
+// Appointment Booking Component
+const AppointmentBooking = () => {
+  const { user } = useAuth();
+  const [testConfigs, setTestConfigs] = useState([]);
+  const [selectedConfig, setSelectedConfig] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [notes, setNotes] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  useEffect(() => {
+    fetchTestConfigs();
+  }, []);
+
+  useEffect(() => {
+    if (selectedDate) {
+      fetchAvailableSlots();
+    }
+  }, [selectedDate]);
+
+  const fetchTestConfigs = async () => {
+    try {
+      const response = await axios.get(`${API}/test-configs`);
+      setTestConfigs(response.data);
+    } catch (error) {
+      console.error('Error fetching test configs:', error);
+    }
+  };
+
+  const fetchAvailableSlots = async () => {
+    if (!selectedDate) return;
+    
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API}/schedule-availability?date=${selectedDate}`);
+      setAvailableSlots(response.data.available_slots || []);
+    } catch (error) {
+      console.error('Error fetching available slots:', error);
+      setAvailableSlots([]);
+    }
+    setLoading(false);
+  };
+
+  const handleBookAppointment = async (e) => {
+    e.preventDefault();
+    if (!selectedConfig || !selectedDate || !selectedSlot) {
+      alert('Please fill all required fields');
+      return;
+    }
+
+    setBookingLoading(true);
+    try {
+      const response = await axios.post(`${API}/appointments`, {
+        test_config_id: selectedConfig,
+        appointment_date: selectedDate,
+        time_slot: selectedSlot,
+        notes: notes
+      });
+      
+      alert('Appointment booked successfully!');
+      // Reset form
+      setSelectedConfig('');
+      setSelectedDate('');
+      setSelectedSlot('');
+      setNotes('');
+      setAvailableSlots([]);
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      alert('Failed to book appointment: ' + (error.response?.data?.detail || 'Unknown error'));
+    }
+    setBookingLoading(false);
+  };
+
+  // Get minimum date (today)
+  const getMinDate = () => {
+    return new Date().toISOString().split('T')[0];
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Book Test Appointment</h2>
+          <p className="text-slate-600 mt-1">Schedule your driving test appointment.</p>
+        </div>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Calendar className="h-5 w-5 text-emerald-600" />
+              <span>Appointment Booking</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleBookAppointment} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="test_config">Test Type *</Label>
+                  <Select value={selectedConfig} onValueChange={setSelectedConfig}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select test type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {testConfigs.map((config) => (
+                        <SelectItem key={config.id} value={config.id}>
+                          {config.name} ({config.total_questions} questions, {config.time_limit_minutes} minutes)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="appointment_date">Appointment Date *</Label>
+                  <Input
+                    id="appointment_date"
+                    type="date"
+                    min={getMinDate()}
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {selectedDate && (
+                <div className="space-y-2">
+                  <Label>Available Time Slots</Label>
+                  {loading ? (
+                    <div className="flex items-center justify-center p-4">
+                      <div className="animate-spin h-6 w-6 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+                    </div>
+                  ) : availableSlots.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {availableSlots.map((slot) => (
+                        <button
+                          key={slot.time_slot}
+                          type="button"
+                          onClick={() => setSelectedSlot(slot.time_slot)}
+                          className={`p-3 rounded-lg border-2 text-center transition-colors ${
+                            selectedSlot === slot.time_slot
+                              ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                              : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="font-medium">{slot.time_slot}</div>
+                          <div className="text-xs text-slate-600">
+                            {slot.available_capacity} of {slot.max_capacity} available
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-slate-600">
+                      No available slots for this date
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (Optional)</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                  rows={3}
+                  placeholder="Any additional notes for your appointment..."
+                />
+              </div>
+
+              <div className="flex space-x-3">
+                <Button
+                  type="submit"
+                  disabled={bookingLoading || !selectedConfig || !selectedDate || !selectedSlot}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {bookingLoading ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                      Booking...
+                    </>
+                  ) : (
+                    'Book Appointment'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// My Appointments Component
+const MyAppointments = () => {
+  const [appointments, setAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      const response = await axios.get(`${API}/appointments/my-appointments`);
+      setAppointments(response.data);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+    }
+    setLoading(false);
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'confirmed': return 'bg-green-100 text-green-800 border-green-300';
+      case 'scheduled': return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'cancelled': return 'bg-red-100 text-red-800 border-red-300';
+      case 'completed': return 'bg-purple-100 text-purple-800 border-purple-300';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+  };
+
+  const getVerificationStatusColor = (status) => {
+    switch (status) {
+      case 'verified': return 'bg-green-100 text-green-800 border-green-300';
+      case 'failed': return 'bg-red-100 text-red-800 border-red-300';
+      case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">My Appointments</h2>
+            <p className="text-slate-600 mt-1">View and manage your test appointments.</p>
+          </div>
+          <Button
+            onClick={() => window.location.href = '/book-appointment'}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Book New Appointment
+          </Button>
+        </div>
+
+        <div className="space-y-4">
+          {appointments.map((appointment) => (
+            <Card key={appointment.id} className="shadow-sm border-slate-200">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <h3 className="text-lg font-medium text-slate-800">
+                        {appointment.test_config_name}
+                      </h3>
+                      <Badge className={`px-2 py-1 text-xs ${getStatusColor(appointment.status)}`}>
+                        {appointment.status.toUpperCase()}
+                      </Badge>
+                      <Badge className={`px-2 py-1 text-xs ${getVerificationStatusColor(appointment.verification_status)}`}>
+                        {appointment.verification_status === 'verified' ? 'VERIFIED' : 
+                         appointment.verification_status === 'failed' ? 'VERIFICATION FAILED' : 
+                         'VERIFICATION PENDING'}
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                      <div className="flex items-center space-x-2">
+                        <Calendar className="h-4 w-4 text-slate-500" />
+                        <span className="font-medium">Date:</span>
+                        <span>{new Date(appointment.appointment_date).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Clock className="h-4 w-4 text-slate-500" />
+                        <span className="font-medium">Time:</span>
+                        <span>{appointment.time_slot}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <User className="h-4 w-4 text-slate-500" />
+                        <span className="font-medium">Booked:</span>
+                        <span>{new Date(appointment.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+
+                    {appointment.notes && (
+                      <div className="text-sm">
+                        <span className="font-medium text-slate-600">Notes:</span>
+                        <p className="text-slate-700 mt-1">{appointment.notes}</p>
+                      </div>
+                    )}
+
+                    {appointment.verification_status === 'pending' && (
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                          <strong>Action Required:</strong> You need to complete identity verification with an officer before your appointment date to access the test.
+                        </p>
+                      </div>
+                    )}
+
+                    {appointment.verification_status === 'failed' && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                        <p className="text-sm text-red-800">
+                          <strong>Verification Failed:</strong> Please contact the testing center to resolve verification issues.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {appointments.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <Calendar className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Appointments</h3>
+                <p className="text-slate-600 mb-4">You haven't booked any appointments yet.</p>
+                <Button
+                  onClick={() => window.location.href = '/book-appointment'}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  Book Your First Appointment
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Identity Verification Component
+const IdentityVerification = () => {
+  const { user } = useAuth();
+  const [appointments, setAppointments] = useState([]);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [verificationData, setVerificationData] = useState({
+    id_document_type: 'national_id',
+    id_document_number: '',
+    verification_photos: [],
+    photo_match_confirmed: false,
+    id_document_match_confirmed: false,
+    verification_notes: ''
+  });
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    try {
+      const response = await axios.get(`${API}/appointments?date=${new Date().toISOString().split('T')[0]}`);
+      setAppointments(response.data.filter(apt => 
+        apt.status === 'scheduled' && apt.verification_status === 'pending'
+      ));
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+    }
+    setLoading(false);
+  };
+
+  const handlePhotoCapture = () => {
+    // This would integrate with webcam API or file upload
+    // For demo purposes, we'll simulate a photo capture
+    const simulatedPhoto = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVR...'; // Base64 image data
+    
+    setVerificationData(prev => ({
+      ...prev,
+      verification_photos: [
+        ...prev.verification_photos,
+        {
+          photo_data: simulatedPhoto,
+          photo_type: 'live_capture',
+          notes: 'Live photo captured during verification'
+        }
+      ]
+    }));
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVerificationData(prev => ({
+          ...prev,
+          verification_photos: [
+            ...prev.verification_photos,
+            {
+              photo_data: reader.result,
+              photo_type: 'uploaded',
+              notes: 'ID document photo uploaded'
+            }
+          ]
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmitVerification = async (e) => {
+    e.preventDefault();
+    if (!selectedAppointment) {
+      alert('Please select an appointment');
+      return;
+    }
+
+    if (verificationData.verification_photos.length === 0) {
+      alert('Please capture or upload at least one verification photo');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await axios.post(`${API}/appointments/${selectedAppointment.id}/verify-identity`, {
+        candidate_id: selectedAppointment.candidate_info.id,
+        appointment_id: selectedAppointment.id,
+        ...verificationData
+      });
+      
+      alert('Identity verification completed successfully!');
+      fetchAppointments(); // Refresh the list
+      setSelectedAppointment(null);
+      setVerificationData({
+        id_document_type: 'national_id',
+        id_document_number: '',
+        verification_photos: [],
+        photo_match_confirmed: false,
+        id_document_match_confirmed: false,
+        verification_notes: ''
+      });
+    } catch (error) {
+      console.error('Error submitting verification:', error);
+      alert('Failed to submit verification: ' + (error.response?.data?.detail || 'Unknown error'));
+    }
+    setSubmitting(false);
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Identity Verification</h2>
+          <p className="text-slate-600 mt-1">Verify candidate identity before test access.</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Appointments List */}
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>Today's Appointments Requiring Verification</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {appointments.map((appointment) => (
+                  <div
+                    key={appointment.id}
+                    onClick={() => setSelectedAppointment(appointment)}
+                    className={`p-4 rounded-lg border-2 cursor-pointer transition-colors ${
+                      selectedAppointment?.id === appointment.id
+                        ? 'border-emerald-500 bg-emerald-50'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <h3 className="font-medium text-slate-800">
+                        {appointment.candidate_info?.full_name}
+                      </h3>
+                      <div className="text-sm text-slate-600">
+                        <p>Test: {appointment.test_config_name}</p>
+                        <p>Time: {appointment.time_slot}</p>
+                        <p>Email: {appointment.candidate_info?.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {appointments.length === 0 && (
+                  <div className="text-center py-4 text-slate-600">
+                    No appointments requiring verification today
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Verification Form */}
+          {selectedAppointment && (
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Shield className="h-5 w-5 text-emerald-600" />
+                  <span>Verify Identity: {selectedAppointment.candidate_info?.full_name}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmitVerification} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="id_document_type">ID Document Type</Label>
+                    <Select 
+                      value={verificationData.id_document_type} 
+                      onValueChange={(value) => setVerificationData(prev => ({ ...prev, id_document_type: value }))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="national_id">National ID</SelectItem>
+                        <SelectItem value="passport">Passport</SelectItem>
+                        <SelectItem value="drivers_license">Driver's License</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="id_document_number">ID Document Number</Label>
+                    <Input
+                      id="id_document_number"
+                      value={verificationData.id_document_number}
+                      onChange={(e) => setVerificationData(prev => ({ ...prev, id_document_number: e.target.value }))}
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      required
+                    />
+                  </div>
+
+                  {/* Photo Capture/Upload */}
+                  <div className="space-y-3">
+                    <Label>Verification Photos</Label>
+                    <div className="flex space-x-3">
+                      <Button
+                        type="button"
+                        onClick={handlePhotoCapture}
+                        variant="outline"
+                        className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                      >
+                        <Camera className="h-4 w-4 mr-2" />
+                        Capture Photo
+                      </Button>
+                      <Label htmlFor="photo_upload" className="cursor-pointer">
+                        <div className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-md inline-flex items-center">
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Photo
+                        </div>
+                        <Input
+                          id="photo_upload"
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                      </Label>
+                    </div>
+                    
+                    {verificationData.verification_photos.length > 0 && (
+                      <div className="text-sm text-green-600">
+                        ✓ {verificationData.verification_photos.length} photo(s) captured
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Verification Checkboxes */}
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="photo_match"
+                        checked={verificationData.photo_match_confirmed}
+                        onChange={(e) => setVerificationData(prev => ({ ...prev, photo_match_confirmed: e.target.checked }))}
+                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <Label htmlFor="photo_match" className="text-sm">
+                        Photo matches candidate appearance
+                      </Label>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="id_match"
+                        checked={verificationData.id_document_match_confirmed}
+                        onChange={(e) => setVerificationData(prev => ({ ...prev, id_document_match_confirmed: e.target.checked }))}
+                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <Label htmlFor="id_match" className="text-sm">
+                        ID document details verified
+                      </Label>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="verification_notes">Verification Notes</Label>
+                    <Textarea
+                      id="verification_notes"
+                      value={verificationData.verification_notes}
+                      onChange={(e) => setVerificationData(prev => ({ ...prev, verification_notes: e.target.value }))}
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      rows={3}
+                      placeholder="Any additional notes about the verification process..."
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    {submitting ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                        Submitting Verification...
+                      </>
+                    ) : (
+                      'Complete Verification'
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Admin Schedule Management Component
+const ScheduleManagement = () => {
+  const [scheduleConfigs, setScheduleConfigs] = useState([]);
+  const [holidays, setHolidays] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [showHolidayForm, setShowHolidayForm] = useState(false);
+  const [scheduleFormData, setScheduleFormData] = useState({
+    day_of_week: 0,
+    time_slots: [{ start_time: '09:00', end_time: '10:00', max_capacity: 5, is_active: true }],
+    is_active: true
+  });
+  const [holidayFormData, setHolidayFormData] = useState({
+    date: '',
+    name: '',
+    description: ''
+  });
+
+  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  useEffect(() => {
+    fetchScheduleConfigs();
+    fetchHolidays();
+  }, []);
+
+  const fetchScheduleConfigs = async () => {
+    try {
+      const response = await axios.get(`${API}/admin/schedule-config`);
+      setScheduleConfigs(response.data);
+    } catch (error) {
+      console.error('Error fetching schedule configs:', error);
+    }
+  };
+
+  const fetchHolidays = async () => {
+    try {
+      const response = await axios.get(`${API}/admin/holidays`);
+      setHolidays(response.data);
+    } catch (error) {
+      console.error('Error fetching holidays:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleCreateSchedule = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/admin/schedule-config`, scheduleFormData);
+      setShowScheduleForm(false);
+      setScheduleFormData({
+        day_of_week: 0,
+        time_slots: [{ start_time: '09:00', end_time: '10:00', max_capacity: 5, is_active: true }],
+        is_active: true
+      });
+      fetchScheduleConfigs();
+      alert('Schedule configuration saved successfully!');
+    } catch (error) {
+      console.error('Error creating schedule:', error);
+      alert('Failed to create schedule configuration');
+    }
+  };
+
+  const handleCreateHoliday = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/admin/holidays`, holidayFormData);
+      setShowHolidayForm(false);
+      setHolidayFormData({ date: '', name: '', description: '' });
+      fetchHolidays();
+      alert('Holiday created successfully!');
+    } catch (error) {
+      console.error('Error creating holiday:', error);
+      alert('Failed to create holiday');
+    }
+  };
+
+  const handleDeleteHoliday = async (holidayId) => {
+    if (!confirm('Are you sure you want to delete this holiday?')) return;
+    
+    try {
+      await axios.delete(`${API}/admin/holidays/${holidayId}`);
+      fetchHolidays();
+      alert('Holiday deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting holiday:', error);
+      alert('Failed to delete holiday');
+    }
+  };
+
+  const addTimeSlot = () => {
+    setScheduleFormData(prev => ({
+      ...prev,
+      time_slots: [
+        ...prev.time_slots,
+        { start_time: '09:00', end_time: '10:00', max_capacity: 5, is_active: true }
+      ]
+    }));
+  };
+
+  const updateTimeSlot = (index, field, value) => {
+    const newSlots = [...scheduleFormData.time_slots];
+    newSlots[index] = { ...newSlots[index], [field]: value };
+    setScheduleFormData(prev => ({ ...prev, time_slots: newSlots }));
+  };
+
+  const removeTimeSlot = (index) => {
+    if (scheduleFormData.time_slots.length > 1) {
+      const newSlots = scheduleFormData.time_slots.filter((_, i) => i !== index);
+      setScheduleFormData(prev => ({ ...prev, time_slots: newSlots }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Schedule Management</h2>
+          <p className="text-slate-600 mt-1">Configure appointment schedules and manage holidays.</p>
+        </div>
+
+        <Tabs defaultValue="schedules">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="schedules">Weekly Schedules</TabsTrigger>
+            <TabsTrigger value="holidays">Holidays</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="schedules" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium text-slate-800">Weekly Schedule Configuration</h3>
+              <Button
+                onClick={() => setShowScheduleForm(!showScheduleForm)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Configure Day
+              </Button>
+            </div>
+
+            {showScheduleForm && (
+              <Card className="shadow-sm border-slate-200">
+                <CardHeader>
+                  <CardTitle>Configure Schedule for Day</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleCreateSchedule} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Day of Week</Label>
+                      <Select 
+                        value={scheduleFormData.day_of_week.toString()} 
+                        onValueChange={(value) => setScheduleFormData(prev => ({ ...prev, day_of_week: parseInt(value) }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {daysOfWeek.map((day, index) => (
+                            <SelectItem key={index} value={index.toString()}>{day}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label>Time Slots</Label>
+                      {scheduleFormData.time_slots.map((slot, index) => (
+                        <div key={index} className="flex space-x-3 items-end p-3 bg-slate-50 rounded-lg">
+                          <div className="flex-1">
+                            <Label className="text-xs">Start Time</Label>
+                            <Input
+                              type="time"
+                              value={slot.start_time}
+                              onChange={(e) => updateTimeSlot(index, 'start_time', e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Label className="text-xs">End Time</Label>
+                            <Input
+                              type="time"
+                              value={slot.end_time}
+                              onChange={(e) => updateTimeSlot(index, 'end_time', e.target.value)}
+                              className="text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <Label className="text-xs">Max Capacity</Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={slot.max_capacity}
+                              onChange={(e) => updateTimeSlot(index, 'max_capacity', parseInt(e.target.value))}
+                              className="text-sm"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={() => removeTimeSlot(index)}
+                            variant="outline"
+                            size="sm"
+                            disabled={scheduleFormData.time_slots.length === 1}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      <Button type="button" onClick={addTimeSlot} variant="outline" size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Time Slot
+                      </Button>
+                    </div>
+
+                    <div className="flex space-x-3">
+                      <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                        Save Schedule
+                      </Button>
+                      <Button type="button" onClick={() => setShowScheduleForm(false)} variant="outline">
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {daysOfWeek.map((day, index) => {
+                const config = scheduleConfigs.find(config => config.day_of_week === index);
+                return (
+                  <Card key={index} className="shadow-sm border-slate-200">
+                    <CardHeader>
+                      <CardTitle className="flex items-center justify-between">
+                        <span>{day}</span>
+                        <Badge className={config ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}>
+                          {config ? 'Configured' : 'Not Set'}
+                        </Badge>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {config ? (
+                        <div className="space-y-2">
+                          {config.time_slots.map((slot, slotIndex) => (
+                            <div key={slotIndex} className="flex justify-between items-center p-2 bg-slate-50 rounded">
+                              <span className="text-sm font-medium">{slot.start_time} - {slot.end_time}</span>
+                              <span className="text-xs text-slate-600">Max: {slot.max_capacity}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-slate-600">No schedule configured for this day</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="holidays" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-medium text-slate-800">Holiday Management</h3>
+              <Button
+                onClick={() => setShowHolidayForm(!showHolidayForm)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Holiday
+              </Button>
+            </div>
+
+            {showHolidayForm && (
+              <Card className="shadow-sm border-slate-200">
+                <CardHeader>
+                  <CardTitle>Add Holiday</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleCreateHoliday} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="holiday_date">Date</Label>
+                        <Input
+                          id="holiday_date"
+                          type="date"
+                          value={holidayFormData.date}
+                          onChange={(e) => setHolidayFormData(prev => ({ ...prev, date: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="holiday_name">Holiday Name</Label>
+                        <Input
+                          id="holiday_name"
+                          value={holidayFormData.name}
+                          onChange={(e) => setHolidayFormData(prev => ({ ...prev, name: e.target.value }))}
+                          required
+                          placeholder="e.g., Christmas Day"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="holiday_description">Description (Optional)</Label>
+                      <Textarea
+                        id="holiday_description"
+                        value={holidayFormData.description}
+                        onChange={(e) => setHolidayFormData(prev => ({ ...prev, description: e.target.value }))}
+                        placeholder="Additional details about this holiday"
+                        rows={2}
+                      />
+                    </div>
+                    <div className="flex space-x-3">
+                      <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                        Add Holiday
+                      </Button>
+                      <Button type="button" onClick={() => setShowHolidayForm(false)} variant="outline">
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {holidays.map((holiday) => (
+                <Card key={holiday.id} className="shadow-sm border-slate-200">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div className="space-y-1">
+                        <h3 className="font-medium text-slate-800">{holiday.name}</h3>
+                        <p className="text-sm text-slate-600">{new Date(holiday.date).toLocaleDateString()}</p>
+                        {holiday.description && (
+                          <p className="text-xs text-slate-500">{holiday.description}</p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={() => handleDeleteHoliday(holiday.id)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            {holidays.length === 0 && (
+              <Card className="shadow-sm border-slate-200">
+                <CardContent className="p-8 text-center">
+                  <Calendar className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-slate-800 mb-2">No Holidays Configured</h3>
+                  <p className="text-slate-600">Add holidays to block appointment bookings on specific dates.</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </DashboardLayout>
+  );
+};
+
 // Main App Component
 function App() {
   return (
