@@ -3820,7 +3820,7 @@ async def create_certificate(certificate_data: CertificateCreate, current_user: 
         "notes": certificate_data.notes,
         "status": "active",
         "created_at": datetime.utcnow(),
-        "created_by": current_user["user_id"]
+        "created_by": current_user["id"]
     }
     
     await db.certificates.insert_one(cert_doc)
