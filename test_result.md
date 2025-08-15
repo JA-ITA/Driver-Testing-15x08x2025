@@ -261,7 +261,7 @@ backend:
         agent: "testing"
         comment: "COMPREHENSIVE TESTING COMPLETED: Phase 7 Resit Management APIs working excellently. ✅ Get Candidate Resits (my-resits endpoint). ✅ Get All Resits for staff with proper role-based access control. ✅ Request Resit validation (correctly validates session existence). ✅ Role-based access control (Candidates can only see their own resits, Staff can see all). ✅ Session validation and failed stage tracking integration working. All resit management functionality operational."
 
-  - task: "Phase 7 Failed Stage Tracking APIs"
+  - task: "User Management API (Administrator Add Users & Assign Roles)"
     implemented: true
     working: true
     file: "/app/backend/server.py"
@@ -270,9 +270,12 @@ backend:
     needs_retesting: false
     status_history:
       - working: true
+        agent: "main"
+        comment: "User Management APIs fully implemented: create users with role assignment, list all users with filtering, update user profiles and roles, soft delete/restore users, comprehensive role-based access control (Administrator only)"
+      - working: true
         agent: "testing"
-        comment: "COMPREHENSIVE TESTING COMPLETED: Phase 7 Failed Stage Tracking APIs working excellently. ✅ Record Failed Stages (officers can record failed test stages with scores and reasons). ✅ Get Candidate Failed Stages (both officer and candidate access). ✅ Get Failed Stages Analytics (comprehensive analytics with stage statistics and resit success rates). ✅ Role-based access control (Officers record, Candidates view own, Administrators access analytics). ✅ Data validation and scoring system working correctly. All failed stage tracking functionality operational."
-
+        comment: "COMPREHENSIVE TESTING COMPLETED: All User Management APIs working perfectly with 100% success rate (27/27 tests passed). ✅ User Creation API with role validation (Administrator, Manager, Driver Assessment Officer, Regional Director, Candidate), email validation, invalid role rejection, required field validation. ✅ User Listing API with include_deleted parameter, password security, role-based access control. ✅ User Update API with profile updates, password updates, role changes, validation for non-existent users. ✅ User Deletion and Restoration APIs with soft deletion and restoration functionality. ✅ Authorization Testing confirming only Administrators can access, other roles properly blocked, self-deletion prevention working. All functionality operational and secure."
+        
   - task: "User Management APIs"
     implemented: true
     working: true
