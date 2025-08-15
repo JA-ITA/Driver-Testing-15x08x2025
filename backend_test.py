@@ -1374,6 +1374,473 @@ class ITABackendTester:
         except Exception as e:
             print(f"💥 Error during Phase 5 testing: {str(e)}")
 
+    # =============================================================================
+    # PHASE 6: MULTI-STAGE TESTING SYSTEM TESTS
+    # =============================================================================
+
+    def test_multi_stage_test_configurations(self):
+        """Test Phase 6: Multi-Stage Test Configuration Management"""
+        print("🎯 Testing Phase 6: Multi-Stage Test Configuration Management")
+        
+        if 'admin' not in self.tokens or not hasattr(self, 'categories') or not self.categories:
+            self.log_test("Prerequisites Missing for Multi-Stage Test Configs", False, "Admin token or categories missing")
+            return
+        
+        category_id = self.categories[0]['id']
+        
+        # Test creating multi-stage test configuration
+        multi_stage_config_data = {
+            "name": "Full Driver License Multi-Stage Test",
+            "description": "Complete multi-stage test: Written → Yard → Road",
+            "category_id": category_id,
+            "written_total_questions": 20,
+            "written_pass_mark_percentage": 75,
+            "written_time_limit_minutes": 25,
+            "written_difficulty_distribution": {"easy": 30, "medium": 50, "hard": 20},
+            "yard_pass_mark_percentage": 75,
+            "road_pass_mark_percentage": 75,
+            "is_active": True,
+            "requires_officer_assignment": True
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-test-configs', multi_stage_config_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Multi-Stage Test Configuration", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.multi_stage_config_id = response.get('config_id')
+        
+        # Test getting all multi-stage test configurations
+        success, response = self.make_request('GET', 'multi-stage-test-configs', token=self.tokens['admin'])
+        self.log_test("Get All Multi-Stage Test Configurations", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} configurations" if success else f"Error: {response}")
+        
+        # Test getting specific multi-stage test configuration
+        if hasattr(self, 'multi_stage_config_id'):
+            success, response = self.make_request('GET', f'multi-stage-test-configs/{self.multi_stage_config_id}', 
+                                                token=self.tokens['admin'])
+            self.log_test("Get Specific Multi-Stage Test Configuration", success,
+                         f"Config Name: {response.get('name', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test updating multi-stage test configuration
+        if hasattr(self, 'multi_stage_config_id'):
+            update_data = {
+                "name": "Updated Multi-Stage Driver License Test",
+                "written_total_questions": 25,
+                "yard_pass_mark_percentage": 80
+            }
+            
+            success, response = self.make_request('PUT', f'multi-stage-test-configs/{self.multi_stage_config_id}', update_data,
+                                                token=self.tokens['admin'])
+            self.log_test("Update Multi-Stage Test Configuration", success,
+                         f"Configuration updated successfully" if success else f"Error: {response}")
+        
+        # Test invalid difficulty distribution
+        invalid_config = {
+            "name": "Invalid Multi-Stage Test Config",
+            "category_id": category_id,
+            "written_total_questions": 20,
+            "written_pass_mark_percentage": 75,
+            "written_time_limit_minutes": 25,
+            "written_difficulty_distribution": {"easy": 30, "medium": 50, "hard": 30}  # Adds up to 110%
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-test-configs', invalid_config,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Create Invalid Multi-Stage Test Config (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test non-admin access
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'multi-stage-test-configs', multi_stage_config_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Create Multi-Stage Test Config (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_evaluation_criteria_management(self):
+        """Test Phase 6: Evaluation Criteria Management"""
+        print("📋 Testing Phase 6: Evaluation Criteria Management")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Evaluation Criteria", False, "Admin login failed")
+            return
+        
+        # Test creating yard evaluation criteria
+        yard_criteria = [
+            {
+                "name": "Reversing",
+                "description": "Ability to reverse safely and accurately",
+                "stage": "yard",
+                "max_score": 10,
+                "is_critical": True,
+                "is_active": True
+            },
+            {
+                "name": "Parallel Parking",
+                "description": "Parallel parking execution",
+                "stage": "yard",
+                "max_score": 10,
+                "is_critical": True,
+                "is_active": True
+            },
+            {
+                "name": "Hill Start",
+                "description": "Starting on an incline without rolling back",
+                "stage": "yard",
+                "max_score": 10,
+                "is_critical": False,
+                "is_active": True
+            }
+        ]
+        
+        created_yard_criteria = []
+        
+        for criterion_data in yard_criteria:
+            success, response = self.make_request('POST', 'evaluation-criteria', criterion_data,
+                                                token=self.tokens['admin'], expected_status=200)
+            self.log_test(f"Create Yard Criterion: {criterion_data['name']}", success,
+                         f"Criterion ID: {response.get('criterion_id', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                created_yard_criteria.append({**criterion_data, 'id': response.get('criterion_id')})
+        
+        # Test creating road evaluation criteria
+        road_criteria = [
+            {
+                "name": "Use of Road",
+                "description": "Proper road usage and lane discipline",
+                "stage": "road",
+                "max_score": 15,
+                "is_critical": True,
+                "is_active": True
+            },
+            {
+                "name": "Three-Point Turns",
+                "description": "Execution of three-point turns",
+                "stage": "road",
+                "max_score": 10,
+                "is_critical": False,
+                "is_active": True
+            },
+            {
+                "name": "Intersections",
+                "description": "Navigation through intersections",
+                "stage": "road",
+                "max_score": 15,
+                "is_critical": True,
+                "is_active": True
+            }
+        ]
+        
+        created_road_criteria = []
+        
+        for criterion_data in road_criteria:
+            success, response = self.make_request('POST', 'evaluation-criteria', criterion_data,
+                                                token=self.tokens['admin'], expected_status=200)
+            self.log_test(f"Create Road Criterion: {criterion_data['name']}", success,
+                         f"Criterion ID: {response.get('criterion_id', 'N/A')}" if success else f"Error: {response}")
+            
+            if success:
+                created_road_criteria.append({**criterion_data, 'id': response.get('criterion_id')})
+        
+        # Store criteria for later use
+        self.yard_criteria = created_yard_criteria
+        self.road_criteria = created_road_criteria
+        
+        # Test getting all evaluation criteria
+        success, response = self.make_request('GET', 'evaluation-criteria', token=self.tokens['admin'])
+        self.log_test("Get All Evaluation Criteria", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} criteria" if success else f"Error: {response}")
+        
+        # Test getting yard-specific criteria
+        success, response = self.make_request('GET', 'evaluation-criteria?stage=yard', token=self.tokens['admin'])
+        self.log_test("Get Yard Evaluation Criteria", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} yard criteria" if success else f"Error: {response}")
+        
+        # Test getting road-specific criteria
+        success, response = self.make_request('GET', 'evaluation-criteria?stage=road', token=self.tokens['admin'])
+        self.log_test("Get Road Evaluation Criteria", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} road criteria" if success else f"Error: {response}")
+        
+        # Test updating evaluation criterion
+        if created_yard_criteria:
+            criterion_id = created_yard_criteria[0]['id']
+            update_data = {
+                "name": "Updated Reversing",
+                "description": "Updated description for reversing skill",
+                "max_score": 12
+            }
+            
+            success, response = self.make_request('PUT', f'evaluation-criteria/{criterion_id}', update_data,
+                                                token=self.tokens['admin'])
+            self.log_test("Update Evaluation Criterion", success,
+                         f"Criterion updated successfully" if success else f"Error: {response}")
+        
+        # Test invalid stage
+        invalid_criterion = {
+            "name": "Invalid Stage Criterion",
+            "description": "Should fail",
+            "stage": "invalid_stage",
+            "max_score": 10,
+            "is_critical": False,
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'evaluation-criteria', invalid_criterion,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Create Invalid Stage Criterion (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test candidate access to evaluation criteria (should fail)
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'evaluation-criteria',
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to Evaluation Criteria (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_multi_stage_test_sessions(self):
+        """Test Phase 6: Multi-Stage Test Session Management"""
+        print("🎯 Testing Phase 6: Multi-Stage Test Session Management")
+        
+        if ('test_candidate' not in self.tokens or not hasattr(self, 'multi_stage_config_id')):
+            self.log_test("Prerequisites Missing for Multi-Stage Test Sessions", False, 
+                         "Test candidate token or multi-stage config missing")
+            return
+        
+        # Get candidate ID
+        candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                     token=self.tokens['test_candidate'])
+        if not candidate_profile_response[0]:
+            self.log_test("Get Candidate Profile for Multi-Stage Test", False, "Could not get candidate profile")
+            return
+        
+        candidate_id = candidate_profile_response[1].get('id')
+        
+        # Test starting a multi-stage test session
+        multi_stage_session_data = {
+            "test_config_id": self.multi_stage_config_id,
+            "candidate_id": candidate_id
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/start', multi_stage_session_data,
+                                            token=self.tokens['test_candidate'], expected_status=200)
+        self.log_test("Start Multi-Stage Test Session", success,
+                     f"Session ID: {response.get('id', 'N/A')}, Current Stage: {response.get('current_stage', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.multi_stage_session_id = response.get('id')
+        
+        # Test getting multi-stage test session info
+        if hasattr(self, 'multi_stage_session_id'):
+            success, response = self.make_request('GET', f'multi-stage-tests/session/{self.multi_stage_session_id}',
+                                                token=self.tokens['test_candidate'])
+            self.log_test("Get Multi-Stage Test Session Info", success,
+                         f"Status: {response.get('status', 'N/A')}, Current Stage: {response.get('current_stage', 'N/A')}" if success else f"Error: {response}")
+
+    def test_officer_assignment_system(self):
+        """Test Phase 6: Officer Assignment System"""
+        print("👮 Testing Phase 6: Officer Assignment System")
+        
+        if ('admin' not in self.tokens or not hasattr(self, 'multi_stage_session_id') or 
+            'officer' not in self.tokens):
+            self.log_test("Prerequisites Missing for Officer Assignment", False, 
+                         "Admin token, multi-stage session, or officer missing")
+            return
+        
+        # Test assigning officer to yard stage
+        yard_assignment_data = {
+            "session_id": self.multi_stage_session_id,
+            "officer_email": self.users['officer']['email'],
+            "stage": "yard",
+            "assigned_by": self.users['admin']['email'],
+            "notes": "Assigned for yard test evaluation"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/assign-officer', yard_assignment_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Assign Officer to Yard Stage", success,
+                     f"Assignment ID: {response.get('assignment_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test assigning officer to road stage
+        road_assignment_data = {
+            "session_id": self.multi_stage_session_id,
+            "officer_email": self.users['officer']['email'],
+            "stage": "road",
+            "assigned_by": self.users['admin']['email'],
+            "notes": "Assigned for road test evaluation"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/assign-officer', road_assignment_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Assign Officer to Road Stage", success,
+                     f"Assignment ID: {response.get('assignment_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test officer viewing their assignments
+        success, response = self.make_request('GET', 'multi-stage-tests/my-assignments',
+                                            token=self.tokens['officer'])
+        self.log_test("Officer Get My Assignments", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} assignments" if success else f"Error: {response}")
+        
+        # Test invalid officer assignment (non-existent officer)
+        invalid_assignment = {
+            "session_id": self.multi_stage_session_id,
+            "officer_email": "nonexistent@officer.com",
+            "stage": "yard",
+            "assigned_by": self.users['admin']['email'],
+            "notes": "Should fail"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/assign-officer', invalid_assignment,
+                                            token=self.tokens['admin'], expected_status=404)
+        self.log_test("Assign Non-existent Officer (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test invalid stage assignment
+        invalid_stage_assignment = {
+            "session_id": self.multi_stage_session_id,
+            "officer_email": self.users['officer']['email'],
+            "stage": "written",  # Can't assign officers to written stage
+            "assigned_by": self.users['admin']['email'],
+            "notes": "Should fail"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/assign-officer', invalid_stage_assignment,
+                                            token=self.tokens['admin'], expected_status=400)
+        self.log_test("Assign Officer to Written Stage (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized assignment (officer trying to assign)
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'multi-stage-tests/assign-officer', yard_assignment_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Assign Officer (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_stage_evaluation_system(self):
+        """Test Phase 6: Stage Evaluation System"""
+        print("📊 Testing Phase 6: Stage Evaluation System")
+        
+        if ('officer' not in self.tokens or not hasattr(self, 'multi_stage_session_id') or 
+            not hasattr(self, 'yard_criteria') or not hasattr(self, 'road_criteria')):
+            self.log_test("Prerequisites Missing for Stage Evaluation", False, 
+                         "Officer token, multi-stage session, or evaluation criteria missing")
+            return
+        
+        # Test evaluating yard stage
+        yard_evaluations = []
+        for criterion in self.yard_criteria:
+            if criterion.get('id'):
+                # Give different scores for testing
+                score = 8 if criterion['name'] == 'Reversing' else (9 if criterion['name'] == 'Parallel Parking' else 7)
+                yard_evaluations.append({
+                    "criterion_id": criterion['id'],
+                    "score": score,
+                    "notes": f"Good performance in {criterion['name']}"
+                })
+        
+        yard_stage_result = {
+            "session_id": self.multi_stage_session_id,
+            "stage": "yard",
+            "evaluations": yard_evaluations,
+            "passed": None,  # Will be calculated by system
+            "evaluated_by": None,  # Will be set by system
+            "evaluation_notes": "Overall good yard test performance"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/evaluate-stage', yard_stage_result,
+                                            token=self.tokens['officer'], expected_status=200)
+        self.log_test("Evaluate Yard Stage", success,
+                     f"Score: {response.get('score_percentage', 'N/A')}%, Passed: {response.get('passed', 'N/A')}" if success else f"Error: {response}")
+        
+        if success:
+            self.yard_result_id = response.get('id')
+        
+        # Test invalid stage evaluation
+        invalid_stage_result = {
+            "session_id": self.multi_stage_session_id,
+            "stage": "written",  # Can't evaluate written stage through this endpoint
+            "evaluations": [],
+            "evaluation_notes": "Should fail"
+        }
+        
+        success, response = self.make_request('POST', 'multi-stage-tests/evaluate-stage', invalid_stage_result,
+                                            token=self.tokens['officer'], expected_status=400)
+        self.log_test("Evaluate Written Stage (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized evaluation (candidate trying to evaluate)
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('POST', 'multi-stage-tests/evaluate-stage', yard_stage_result,
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Evaluate Stage (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_multi_stage_analytics_and_reporting(self):
+        """Test Phase 6: Multi-Stage Analytics and Reporting"""
+        print("📈 Testing Phase 6: Multi-Stage Analytics and Reporting")
+        
+        # Test getting multi-stage test results
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'multi-stage-tests/results', token=self.tokens['test_candidate'])
+            self.log_test("Get Multi-Stage Test Results (Candidate)", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} results" if success else f"Error: {response}")
+        
+        # Test staff access to all multi-stage results
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'multi-stage-tests/results', token=self.tokens['officer'])
+            self.log_test("Get All Multi-Stage Test Results (Staff)", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} results" if success else f"Error: {response}")
+        
+        # Test multi-stage analytics dashboard
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'multi-stage-tests/analytics', token=self.tokens['officer'])
+            self.log_test("Get Multi-Stage Test Analytics", success,
+                         f"Total Sessions: {response.get('total_sessions', 0)}, Completion Rate: {response.get('completion_rate', 0):.1f}%" if success else f"Error: {response}")
+            
+            if success:
+                # Verify analytics structure
+                expected_keys = ['total_sessions', 'active_sessions', 'completed_sessions', 'failed_sessions', 
+                               'completion_rate', 'stage_pass_rates', 'failure_by_stage']
+                missing_keys = [key for key in expected_keys if key not in response]
+                
+                if not missing_keys:
+                    self.log_test("Multi-Stage Analytics Structure", True, "All expected fields present")
+                    
+                    # Check stage pass rates structure
+                    stage_pass_rates = response.get('stage_pass_rates', {})
+                    expected_stages = ['written', 'yard', 'road']
+                    missing_stages = [stage for stage in expected_stages if stage not in stage_pass_rates]
+                    
+                    if not missing_stages:
+                        self.log_test("Stage Pass Rates Structure", True, "All stage pass rates present")
+                    else:
+                        self.log_test("Stage Pass Rates Structure", False, f"Missing stages: {missing_stages}")
+                else:
+                    self.log_test("Multi-Stage Analytics Structure", False, f"Missing fields: {missing_keys}")
+        
+        # Test candidate access to analytics (should fail)
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'multi-stage-tests/analytics', 
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to Multi-Stage Analytics (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def run_phase_6_tests(self):
+        """Run all Phase 6: Multi-Stage Testing System tests"""
+        print("🎯 Running Phase 6: Multi-Stage Testing System Tests")
+        print("=" * 80)
+        
+        try:
+            self.test_multi_stage_test_configurations()
+            self.test_evaluation_criteria_management()
+            self.test_multi_stage_test_sessions()
+            self.test_officer_assignment_system()
+            self.test_stage_evaluation_system()
+            self.test_multi_stage_analytics_and_reporting()
+        except Exception as e:
+            print(f"💥 Error during Phase 6 testing: {str(e)}")
+
     def run_phase_3_tests(self):
         """Run Phase 3 specific tests"""
         print("🔬 Running Phase 3: Question Bank Management Tests")
