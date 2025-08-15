@@ -2829,29 +2829,34 @@ class ITABackendTester:
         # Test bulk user creation
         bulk_users_data = {
             "operation_type": "create_users",
-            "data": [
-                {
-                    "email": "bulk.user1@ita.gov",
-                    "password": "bulkuser123",
-                    "full_name": "Bulk User One",
-                    "role": "Driver Assessment Officer",
-                    "is_active": True
-                },
-                {
-                    "email": "bulk.user2@ita.gov",
-                    "password": "bulkuser123",
-                    "full_name": "Bulk User Two",
-                    "role": "Manager",
-                    "is_active": True
-                },
-                {
-                    "email": "bulk.candidate@example.com",
-                    "password": "bulkcandidate123",
-                    "full_name": "Bulk Candidate",
-                    "role": "Candidate",
-                    "is_active": True
-                }
-            ]
+            "data": {
+                "users": [
+                    {
+                        "email": "bulk.user1@ita.gov",
+                        "password": "bulkuser123",
+                        "first_name": "Bulk User",
+                        "last_name": "One",
+                        "role": "Driver Assessment Officer",
+                        "is_active": True
+                    },
+                    {
+                        "email": "bulk.user2@ita.gov",
+                        "password": "bulkuser123",
+                        "first_name": "Bulk User",
+                        "last_name": "Two",
+                        "role": "Manager",
+                        "is_active": True
+                    },
+                    {
+                        "email": "bulk.candidate@example.com",
+                        "password": "bulkcandidate123",
+                        "first_name": "Bulk",
+                        "last_name": "Candidate",
+                        "role": "Candidate",
+                        "is_active": True
+                    }
+                ]
+            }
         }
         
         success, response = self.make_request('POST', 'bulk/users', bulk_users_data,
