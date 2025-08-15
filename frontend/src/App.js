@@ -5785,4 +5785,305 @@ const MyAssignments = () => {
   );
 };
 
+// Multi-Stage Analytics Component
+const MultiStageAnalytics = () => {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, []);
+
+  const fetchAnalytics = async () => {
+    try {
+      const response = await axios.get(`${API}/multi-stage-tests/analytics`);
+      setAnalytics(response.data);
+    } catch (error) {
+      console.error('Error fetching multi-stage analytics:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <DashboardLayout>
+        <Card>
+          <CardContent className="p-8 text-center">
+            <BarChart3 className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-800 mb-2">No Analytics Data</h3>
+            <p className="text-slate-600">Multi-stage test analytics will appear here once sessions are available.</p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Multi-Stage Test Analytics</h1>
+            <p className="text-slate-600 mt-1">Comprehensive analytics for multi-stage testing system</p>
+          </div>
+          <Button onClick={fetchAnalytics} variant="outline">
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Refresh Data
+          </Button>
+        </div>
+
+        {/* Overall Statistics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Total Sessions</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics.total_sessions}</p>
+                </div>
+                <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Layers className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Active Sessions</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics.active_sessions}</p>
+                </div>
+                <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <Play className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Completed Sessions</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics.completed_sessions}</p>
+                </div>
+                <div className="h-12 w-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="h-6 w-6 text-emerald-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Overall Pass Rate</p>
+                  <p className="text-2xl font-bold text-slate-800">{analytics.overall_pass_rate}%</p>
+                </div>
+                <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Target className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Stage-Specific Analytics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Stage-by-Stage Performance</CardTitle>
+            <CardDescription>Pass rates and performance metrics for each test stage</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Written Stage */}
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-blue-800 mb-4">Written Test Stage</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Attempts:</span>
+                    <span className="font-medium">{analytics.stage_stats?.written?.attempts || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Passed:</span>
+                    <span className="font-medium">{analytics.stage_stats?.written?.passed || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Pass Rate:</span>
+                    <span className="font-medium">{analytics.stage_stats?.written?.pass_rate || 0}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-blue-700">Avg Score:</span>
+                    <span className="font-medium">{analytics.stage_stats?.written?.average_score || 0}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Yard Stage */}
+              <div className="p-4 bg-green-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-green-800 mb-4">Yard Test Stage</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Attempts:</span>
+                    <span className="font-medium">{analytics.stage_stats?.yard?.attempts || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Passed:</span>
+                    <span className="font-medium">{analytics.stage_stats?.yard?.passed || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Pass Rate:</span>
+                    <span className="font-medium">{analytics.stage_stats?.yard?.pass_rate || 0}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-green-700">Avg Score:</span>
+                    <span className="font-medium">{analytics.stage_stats?.yard?.average_score || 0}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Road Stage */}
+              <div className="p-4 bg-purple-50 rounded-lg">
+                <h3 className="text-lg font-semibold text-purple-800 mb-4">Road Test Stage</h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-purple-700">Attempts:</span>
+                    <span className="font-medium">{analytics.stage_stats?.road?.attempts || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-700">Passed:</span>
+                    <span className="font-medium">{analytics.stage_stats?.road?.passed || 0}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-700">Pass Rate:</span>
+                    <span className="font-medium">{analytics.stage_stats?.road?.pass_rate || 0}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-purple-700">Avg Score:</span>
+                    <span className="font-medium">{analytics.stage_stats?.road?.average_score || 0}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity & Configuration Usage */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Multi-Stage Sessions</CardTitle>
+              <CardDescription>Latest test session activity</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analytics.recent_sessions && analytics.recent_sessions.length > 0 ? (
+                <div className="space-y-3">
+                  {analytics.recent_sessions.map((session, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-slate-800">{session.candidate_name}</p>
+                        <p className="text-sm text-slate-600">
+                          {new Date(session.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Badge className={
+                        session.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        session.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        'bg-blue-100 text-blue-800'
+                      }>
+                        {session.status.replace('_', ' ').toUpperCase()}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-600 text-center py-8">No recent sessions</p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Test Configuration Usage</CardTitle>
+              <CardDescription>Multi-stage test configuration statistics</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analytics.config_usage && analytics.config_usage.length > 0 ? (
+                <div className="space-y-3">
+                  {analytics.config_usage.map((config, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div>
+                        <p className="font-medium text-slate-800">{config.config_name}</p>
+                        <p className="text-sm text-slate-600">{config.sessions_count} sessions</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="outline">{config.success_rate}% success</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-600 text-center py-8">No configuration data available</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Officer Performance (if available) */}
+        {analytics.officer_stats && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Assessment Officer Performance</CardTitle>
+              <CardDescription>Performance metrics for practical test evaluations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {analytics.officer_stats.map((officer, index) => (
+                  <div key={index} className="p-4 border rounded-lg">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>
+                          {officer.officer_name?.split(' ').map(n => n[0]).join('') || 'O'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium text-slate-800">{officer.officer_name}</p>
+                        <p className="text-xs text-slate-600">Assessment Officer</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Evaluations:</span>
+                        <span className="font-medium">{officer.total_evaluations}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-600">Avg Score Given:</span>
+                        <span className="font-medium">{officer.average_score_given}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
