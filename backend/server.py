@@ -206,6 +206,7 @@ class AppointmentCreate(BaseModel):
     test_config_id: str
     appointment_date: str  # "2024-07-15"
     time_slot: str         # "09:00-10:00"
+    test_type: str = "single_stage"  # "single_stage" or "multi_stage"
     notes: Optional[str] = None
 
 class AppointmentUpdate(BaseModel):
