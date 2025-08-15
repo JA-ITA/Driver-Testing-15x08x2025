@@ -6145,4 +6145,333 @@ const MultiStageAnalytics = () => {
   );
 };
 
+// =============================================================================
+// PHASE 7: SPECIAL TESTS & RESIT MANAGEMENT SYSTEM COMPONENTS
+// =============================================================================
+
+// Special Test Categories Component
+const SpecialTestCategories = () => {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+
+  const [newCategory, setNewCategory] = useState({
+    name: '',
+    description: '',
+    category_code: '',
+    requirements: [],
+    is_active: true
+  });
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/special-test-categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching special test categories:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingCategory) {
+        await axios.put(`${API}/special-test-categories/${editingCategory.id}`, newCategory);
+      } else {
+        await axios.post(`${API}/special-test-categories`, newCategory);
+      }
+      
+      resetForm();
+      fetchCategories();
+    } catch (error) {
+      console.error('Error saving special test category:', error);
+      alert(error.response?.data?.detail || 'Error saving category');
+    }
+  };
+
+  const resetForm = () => {
+    setNewCategory({
+      name: '',
+      description: '',
+      category_code: '',
+      requirements: [],
+      is_active: true
+    });
+    setShowCreateForm(false);
+    setEditingCategory(null);
+  };
+
+  const handleEdit = (category) => {
+    setEditingCategory(category);
+    setNewCategory(category);
+    setShowCreateForm(true);
+  };
+
+  const addRequirement = () => {
+    const requirement = prompt('Enter a requirement:');
+    if (requirement) {
+      setNewCategory({
+        ...newCategory,
+        requirements: [...newCategory.requirements, requirement]
+      });
+    }
+  };
+
+  const removeRequirement = (index) => {
+    setNewCategory({
+      ...newCategory,
+      requirements: newCategory.requirements.filter((_, i) => i !== index)
+    });
+  };
+
+  const predefinedCategories = [
+    {
+      name: 'Public Passenger Vehicle (PPV)',
+      category_code: 'PPV',
+      description: 'License for driving buses, taxis, and other public passenger vehicles',
+      requirements: ['Valid Class C License for 3+ years', 'Medical certificate', 'Driving record check']
+    },
+    {
+      name: 'Commercial Driver License (CDL)',
+      category_code: 'CDL',
+      description: 'License for driving commercial vehicles over 26,000 lbs',
+      requirements: ['Valid Class C License for 2+ years', 'DOT medical certificate', 'Background check']
+    },
+    {
+      name: 'Hazardous Materials (HazMat)',
+      category_code: 'HMT',
+      description: 'Endorsement for transporting hazardous materials',
+      requirements: ['Valid CDL', 'TSA security clearance', 'Specialized training certificate', 'Background check']
+    }
+  ];
+
+  const createPredefinedCategory = async (predefined) => {
+    try {
+      await axios.post(`${API}/special-test-categories`, {
+        ...predefined,
+        is_active: true
+      });
+      fetchCategories();
+    } catch (error) {
+      console.error('Error creating predefined category:', error);
+      alert('Error creating category');
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Special Test Categories</h1>
+            <p className="text-slate-600 mt-1">Manage special driver test categories (PPV, Commercial, HazMat)</p>
+          </div>
+          <Button onClick={() => setShowCreateForm(true)} className="flex items-center space-x-2">
+            <Award className="h-4 w-4" />
+            <span>Add Category</span>
+          </Button>
+        </div>
+
+        {/* Create/Edit Form */}
+        {showCreateForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingCategory ? 'Edit Special Test Category' : 'Create Special Test Category'}</CardTitle>
+              <CardDescription>Configure special test categories with specific requirements</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Category Name</Label>
+                    <Input
+                      id="name"
+                      value={newCategory.name}
+                      onChange={(e) => setNewCategory({...newCategory, name: e.target.value})}
+                      placeholder="e.g., Public Passenger Vehicle"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category_code">Category Code</Label>
+                    <Input
+                      id="category_code"
+                      value={newCategory.category_code}
+                      onChange={(e) => setNewCategory({...newCategory, category_code: e.target.value.toUpperCase()})}
+                      placeholder="e.g., PPV"
+                      maxLength={5}
+                      required
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={newCategory.is_active}
+                        onChange={(e) => setNewCategory({...newCategory, is_active: e.target.checked})}
+                        className="rounded"
+                      />
+                      <span className="text-sm">Active</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newCategory.description}
+                    onChange={(e) => setNewCategory({...newCategory, description: e.target.value})}
+                    placeholder="Describe this special test category"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Requirements/Prerequisites</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addRequirement}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Requirement
+                    </Button>
+                  </div>
+                  {newCategory.requirements.length > 0 && (
+                    <div className="space-y-2">
+                      {newCategory.requirements.map((req, index) => (
+                        <div key={index} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                          <span className="text-sm">{req}</span>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => removeRequirement(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex space-x-2 pt-4">
+                  <Button type="submit">{editingCategory ? 'Update Category' : 'Create Category'}</Button>
+                  <Button type="button" variant="outline" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Quick Setup */}
+        {categories.length === 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Setup</CardTitle>
+              <CardDescription>Create common special test categories</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {predefinedCategories.map((category, index) => (
+                  <div key={index} className="p-4 border rounded-lg">
+                    <h3 className="font-medium text-slate-800 mb-2">{category.name}</h3>
+                    <p className="text-sm text-slate-600 mb-3">{category.description}</p>
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-slate-700 mb-1">Requirements:</p>
+                      <ul className="text-xs text-slate-600 space-y-1">
+                        {category.requirements.map((req, reqIndex) => (
+                          <li key={reqIndex}>• {req}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <Button size="sm" onClick={() => createPredefinedCategory(category)}>
+                      Create {category.category_code}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Categories List */}
+        <div className="grid gap-6">
+          {categories.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Award className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Special Test Categories</h3>
+                <p className="text-slate-600 mb-4">Create special test categories for PPV, Commercial, or HazMat licenses.</p>
+                <Button onClick={() => setShowCreateForm(true)}>
+                  <Award className="h-4 w-4 mr-2" />
+                  Create First Category
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            categories.map((category) => (
+              <Card key={category.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-3">
+                        <span>{category.name}</span>
+                        <Badge className="bg-blue-100 text-blue-800">{category.category_code}</Badge>
+                        <Badge variant={category.is_active ? "default" : "secondary"}>
+                          {category.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </CardTitle>
+                      {category.description && (
+                        <CardDescription>{category.description}</CardDescription>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleEdit(category)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {category.requirements && category.requirements.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-slate-800 mb-3">Requirements & Prerequisites:</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {category.requirements.map((req, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                            <span className="text-sm text-slate-700">{req}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
