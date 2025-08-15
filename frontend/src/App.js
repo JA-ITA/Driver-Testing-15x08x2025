@@ -3719,6 +3719,39 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Phase 8: Certification & Advanced Admin Features Routes */}
+          <Route
+            path="/certificates"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator', 'Manager', 'Driver Assessment Officer']}>
+                <CertificateGeneration />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/advanced-reports"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator', 'Manager', 'Regional Director']}>
+                <AdvancedReporting />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/bulk-operations"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator', 'Regional Director']}>
+                <BulkOperations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/system-config"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <SystemConfiguration />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
