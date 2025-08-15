@@ -181,6 +181,102 @@ class QuestionApproval(BaseModel):
     action: str  # "approve" or "reject"
     notes: Optional[str] = None
 
+# =============================================================================
+# PHASE 5: APPOINTMENT & VERIFICATION SYSTEM MODELS
+# =============================================================================
+
+# Appointment System Models
+class TimeSlotConfig(BaseModel):
+    start_time: str  # "09:00"
+    end_time: str    # "10:00"
+    max_capacity: int = 5
+    is_active: bool = True
+
+class ScheduleConfig(BaseModel):
+    day_of_week: int  # 0=Monday, 6=Sunday
+    time_slots: List[TimeSlotConfig]
+    is_active: bool = True
+
+class Holiday(BaseModel):
+    date: str  # "2024-12-25"
+    name: str
+    description: Optional[str] = None
+
+class AppointmentCreate(BaseModel):
+    test_config_id: str
+    appointment_date: str  # "2024-07-15"
+    time_slot: str         # "09:00-10:00"
+    notes: Optional[str] = None
+
+class AppointmentUpdate(BaseModel):
+    appointment_date: Optional[str] = None
+    time_slot: Optional[str] = None
+    status: Optional[str] = None  # "scheduled", "confirmed", "cancelled", "completed"
+    notes: Optional[str] = None
+
+class AppointmentReschedule(BaseModel):
+    appointment_id: str
+    new_date: str
+    new_time_slot: str
+    reason: Optional[str] = None
+
+# Identity Verification Models
+class VerificationPhoto(BaseModel):
+    photo_data: str  # Base64 encoded image
+    photo_type: str  # "id_document", "live_capture", "uploaded"
+    notes: Optional[str] = None
+
+class IdentityVerification(BaseModel):
+    candidate_id: str
+    appointment_id: str
+    id_document_type: str  # "national_id", "passport", "drivers_license"
+    id_document_number: str
+    verification_photos: List[VerificationPhoto]
+    photo_match_confirmed: bool
+    id_document_match_confirmed: bool
+    verification_notes: Optional[str] = None
+
+class VerificationUpdate(BaseModel):
+    id_document_type: Optional[str] = None
+    id_document_number: Optional[str] = None
+    photo_match_confirmed: Optional[bool] = None
+    id_document_match_confirmed: Optional[bool] = None
+    verification_notes: Optional[str] = None
+    status: Optional[str] = None  # "pending", "verified", "failed"
+
+# Enhanced Admin Models
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    role: str
+    is_active: bool = True
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+class CandidateAdminCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    date_of_birth: str
+    home_address: str
+    trn: str
+    photograph: Optional[str] = None
+    status: str = "pending"  # "pending", "approved", "rejected"
+
+class CandidateAdminUpdate(BaseModel):
+    full_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    home_address: Optional[str] = None
+    trn: Optional[str] = None
+    photograph: Optional[str] = None
+    status: Optional[str] = None
+    is_deleted: Optional[bool] = None
+
 # Authentication routes
 @api_router.post("/auth/register", response_model=dict)
 async def register_user(user_data: UserRegister):
