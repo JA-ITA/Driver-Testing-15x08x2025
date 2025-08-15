@@ -588,6 +588,7 @@ metadata:
 
 test_plan:
   current_focus:
+    - "User Management Interface (Administrator Add Users & Assign Roles)"
     - "Phase 6 Multi-Stage Test Configuration Interface"
     - "Phase 6 Evaluation Criteria Management Interface"
     - "Phase 6 Officer Assignment Interface"
