@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Calendar } from './components/ui/calendar';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
-import { CalendarIcon, User, Users, FileCheck, Shield, Settings, Camera, CheckCircle, XCircle, Clock, LogOut, Home, BookOpen, Plus, Upload, Eye, Edit, Trash2, FileText, Play, Target, UserCheck, ClipboardCheck, BarChart3, Layers, Award, RefreshCw, AlertTriangle, Calendar as CalendarIcon2, History, X } from 'lucide-react';
+import { CalendarIcon, User, Users, FileCheck, Shield, Settings, Camera, CheckCircle, XCircle, Clock, LogOut, Home, BookOpen, Plus, Upload, Eye, Edit, Trash2, FileText, Play, Target, UserCheck, ClipboardCheck, BarChart3, Layers, Award, RefreshCw, AlertTriangle, Calendar as CalendarIcon2, History, X, FileX, Download, Database, Cog } from 'lucide-react';
 import './App.css';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
