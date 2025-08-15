@@ -2464,13 +2464,23 @@ async def create_appointment(appointment_data: AppointmentCreate, current_user: 
         # Staff members can book for candidates (testing purposes)
         candidate_id = current_user.get("candidate_id", str(uuid.uuid4()))
     
-    # Validate test configuration exists
-    test_config = await db.test_configurations.find_one({"id": appointment_data.test_config_id, "is_active": True})
+    # Validate test configuration exists (check both single-stage and multi-stage)
+    test_config = None
+    test_config_name = None
+    
+    if appointment_data.test_type == "multi_stage":
+        test_config = await db.multi_stage_test_configurations.find_one({"id": appointment_data.test_config_id, "is_active": True})
+    else:
+        test_config = await db.test_configurations.find_one({"id": appointment_data.test_config_id, "is_active": True})
+    
     if not test_config:
+        config_type = "Multi-stage test" if appointment_data.test_type == "multi_stage" else "Test"
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Test configuration not found"
+            detail=f"{config_type} configuration not found"
         )
+    
+    test_config_name = test_config["name"]
     
     # Check availability
     availability = await get_schedule_availability(appointment_data.appointment_date, current_user)
