@@ -4495,4 +4495,372 @@ const TestManagement = () => {
   );
 };
 
+// =============================================================================
+// PHASE 6: MULTI-STAGE TESTING SYSTEM COMPONENTS
+// =============================================================================
+
+// Multi-Stage Test Configurations Component
+const MultiStageTestConfigurations = () => {
+  const [configs, setConfigs] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(null);
+
+  const [newConfig, setNewConfig] = useState({
+    name: '',
+    description: '',
+    category_id: '',
+    written_total_questions: 20,
+    written_pass_mark_percentage: 75,
+    written_time_limit_minutes: 30,
+    yard_pass_mark_percentage: 75,
+    road_pass_mark_percentage: 75,
+    is_active: true,
+    requires_officer_assignment: true
+  });
+
+  useEffect(() => {
+    fetchConfigs();
+    fetchCategories();
+  }, []);
+
+  const fetchConfigs = async () => {
+    try {
+      const response = await axios.get(`${API}/multi-stage-test-configs`);
+      setConfigs(response.data);
+    } catch (error) {
+      console.error('Error fetching multi-stage test configs:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingConfig) {
+        await axios.put(`${API}/multi-stage-test-configs/${editingConfig.id}`, newConfig);
+      } else {
+        await axios.post(`${API}/multi-stage-test-configs`, newConfig);
+      }
+      
+      // Reset form
+      setNewConfig({
+        name: '',
+        description: '',
+        category_id: '',
+        written_total_questions: 20,
+        written_pass_mark_percentage: 75,
+        written_time_limit_minutes: 30,
+        yard_pass_mark_percentage: 75,
+        road_pass_mark_percentage: 75,
+        is_active: true,
+        requires_officer_assignment: true
+      });
+      setShowCreateForm(false);
+      setEditingConfig(null);
+      fetchConfigs();
+    } catch (error) {
+      console.error('Error saving multi-stage test config:', error);
+      alert(error.response?.data?.detail || 'Error saving configuration');
+    }
+  };
+
+  const handleEdit = (config) => {
+    setEditingConfig(config);
+    setNewConfig(config);
+    setShowCreateForm(true);
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Multi-Stage Test Configurations</h1>
+            <p className="text-slate-600 mt-1">Configure Written → Yard → Road test progressions</p>
+          </div>
+          <Button onClick={() => setShowCreateForm(true)} className="flex items-center space-x-2">
+            <Plus className="h-4 w-4" />
+            <span>Add Configuration</span>
+          </Button>
+        </div>
+
+        {/* Create/Edit Form */}
+        {showCreateForm && (
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingConfig ? 'Edit Configuration' : 'Create Multi-Stage Test Configuration'}</CardTitle>
+              <CardDescription>Set up the complete testing process from written test to road evaluation</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Configuration Name</Label>
+                    <Input
+                      id="name"
+                      value={newConfig.name}
+                      onChange={(e) => setNewConfig({...newConfig, name: e.target.value})}
+                      placeholder="e.g., Standard Driver's License Test"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Test Category</Label>
+                    <Select value={newConfig.category_id} onValueChange={(value) => setNewConfig({...newConfig, category_id: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newConfig.description}
+                    onChange={(e) => setNewConfig({...newConfig, description: e.target.value})}
+                    placeholder="Describe this multi-stage test configuration"
+                  />
+                </div>
+
+                {/* Written Test Configuration */}
+                <div className="p-4 bg-blue-50 rounded-lg space-y-4">
+                  <h3 className="text-lg font-semibold text-blue-800">Stage 1: Written Test</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="written_questions">Total Questions</Label>
+                      <Input
+                        id="written_questions"
+                        type="number"
+                        value={newConfig.written_total_questions}
+                        onChange={(e) => setNewConfig({...newConfig, written_total_questions: parseInt(e.target.value)})}
+                        min="1"
+                        max="50"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="written_pass">Pass Mark (%)</Label>
+                      <Input
+                        id="written_pass"
+                        type="number"
+                        value={newConfig.written_pass_mark_percentage}
+                        onChange={(e) => setNewConfig({...newConfig, written_pass_mark_percentage: parseInt(e.target.value)})}
+                        min="1"
+                        max="100"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="written_time">Time Limit (minutes)</Label>
+                      <Input
+                        id="written_time"
+                        type="number"
+                        value={newConfig.written_time_limit_minutes}
+                        onChange={(e) => setNewConfig({...newConfig, written_time_limit_minutes: parseInt(e.target.value)})}
+                        min="5"
+                        max="120"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Yard Test Configuration */}
+                <div className="p-4 bg-green-50 rounded-lg space-y-4">
+                  <h3 className="text-lg font-semibold text-green-800">Stage 2: Yard Test (Competency)</h3>
+                  <p className="text-green-700 text-sm">Practical skills: Reversing, Parallel Parking, Hill Start</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="yard_pass">Pass Mark (%)</Label>
+                    <Input
+                      id="yard_pass"
+                      type="number"
+                      value={newConfig.yard_pass_mark_percentage}
+                      onChange={(e) => setNewConfig({...newConfig, yard_pass_mark_percentage: parseInt(e.target.value)})}
+                      min="1"
+                      max="100"
+                      required
+                      className="max-w-32"
+                    />
+                  </div>
+                </div>
+
+                {/* Road Test Configuration */}
+                <div className="p-4 bg-purple-50 rounded-lg space-y-4">
+                  <h3 className="text-lg font-semibold text-purple-800">Stage 3: Road Test</h3>
+                  <p className="text-purple-700 text-sm">Real driving: Use of Road, Three-Point Turns, Intersections</p>
+                  <div className="space-y-2">
+                    <Label htmlFor="road_pass">Pass Mark (%)</Label>
+                    <Input
+                      id="road_pass"
+                      type="number"
+                      value={newConfig.road_pass_mark_percentage}
+                      onChange={(e) => setNewConfig({...newConfig, road_pass_mark_percentage: parseInt(e.target.value)})}
+                      min="1"
+                      max="100"
+                      required
+                      className="max-w-32"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={newConfig.is_active}
+                      onChange={(e) => setNewConfig({...newConfig, is_active: e.target.checked})}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Active Configuration</span>
+                  </label>
+                  <label className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={newConfig.requires_officer_assignment}
+                      onChange={(e) => setNewConfig({...newConfig, requires_officer_assignment: e.target.checked})}
+                      className="rounded"
+                    />
+                    <span className="text-sm">Requires Officer Assignment</span>
+                  </label>
+                </div>
+
+                <div className="flex space-x-2 pt-4">
+                  <Button type="submit">{editingConfig ? 'Update Configuration' : 'Create Configuration'}</Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                      setShowCreateForm(false);
+                      setEditingConfig(null);
+                      setNewConfig({
+                        name: '',
+                        description: '',
+                        category_id: '',
+                        written_total_questions: 20,
+                        written_pass_mark_percentage: 75,
+                        written_time_limit_minutes: 30,
+                        yard_pass_mark_percentage: 75,
+                        road_pass_mark_percentage: 75,
+                        is_active: true,
+                        requires_officer_assignment: true
+                      });
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Configurations List */}
+        <div className="grid gap-6">
+          {configs.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Layers className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Multi-Stage Test Configurations</h3>
+                <p className="text-slate-600 mb-4">Create your first multi-stage test configuration to enable sequential testing.</p>
+                <Button onClick={() => setShowCreateForm(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Configuration
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            configs.map((config) => (
+              <Card key={config.id}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center space-x-2">
+                        <span>{config.name}</span>
+                        <Badge variant={config.is_active ? "default" : "secondary"}>
+                          {config.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </CardTitle>
+                      {config.description && (
+                        <CardDescription>{config.description}</CardDescription>
+                      )}
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleEdit(config)}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Written Stage */}
+                    <div className="p-3 bg-blue-50 rounded-lg">
+                      <h4 className="font-medium text-blue-800 mb-2">Stage 1: Written Test</h4>
+                      <div className="space-y-1 text-sm text-blue-700">
+                        <p>Questions: {config.written_total_questions}</p>
+                        <p>Pass Mark: {config.written_pass_mark_percentage}%</p>
+                        <p>Time Limit: {config.written_time_limit_minutes} minutes</p>
+                      </div>
+                    </div>
+                    
+                    {/* Yard Stage */}
+                    <div className="p-3 bg-green-50 rounded-lg">
+                      <h4 className="font-medium text-green-800 mb-2">Stage 2: Yard Test</h4>
+                      <div className="space-y-1 text-sm text-green-700">
+                        <p>Pass Mark: {config.yard_pass_mark_percentage}%</p>
+                        <p>Skills: Reversing, Parallel Parking, Hill Start</p>
+                        <p>Officer Required: {config.requires_officer_assignment ? 'Yes' : 'No'}</p>
+                      </div>
+                    </div>
+                    
+                    {/* Road Stage */}
+                    <div className="p-3 bg-purple-50 rounded-lg">
+                      <h4 className="font-medium text-purple-800 mb-2">Stage 3: Road Test</h4>
+                      <div className="space-y-1 text-sm text-purple-700">
+                        <p>Pass Mark: {config.road_pass_mark_percentage}%</p>
+                        <p>Skills: Use of Road, Three-Point Turns, Intersections</p>
+                        <p>Officer Required: {config.requires_officer_assignment ? 'Yes' : 'No'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
