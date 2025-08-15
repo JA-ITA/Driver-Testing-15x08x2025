@@ -3079,6 +3079,9 @@ class ITABackendTester:
             # Phase 7: Special Tests & Resit Management System
             self.run_phase_7_tests()
             
+            # Phase 8: Certificate Generation & Advanced Reporting System
+            self.run_phase_8_tests()
+            
             # User Management API Tests
             self.run_user_management_tests()
             
