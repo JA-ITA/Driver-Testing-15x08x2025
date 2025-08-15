@@ -495,7 +495,10 @@ const DashboardLayout = ({ children }) => {
             { label: 'Officer Assignments', path: '/officer-assignments', icon: UserCheck },
             { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 },
             // Phase 7: Manager access to resit management
-            { label: 'Resit Management', path: '/resit-management', icon: RefreshCw }
+            { label: 'Resit Management', path: '/resit-management', icon: RefreshCw },
+            // Phase 8: Manager access to certificates and reporting
+            { label: 'Certificate Generation', path: '/certificates', icon: Award },
+            { label: 'Advanced Reports', path: '/advanced-reports', icon: BarChart3 }
           );
         } else {
           staffItems.push(
