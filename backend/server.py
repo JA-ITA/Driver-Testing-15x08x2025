@@ -4280,7 +4280,7 @@ async def create_system_config(config: SystemConfig, current_user: dict = Depend
                 "description": config.description,
                 "is_active": config.is_active,
                 "updated_at": datetime.utcnow(),
-                "updated_by": current_user["user_id"]
+                "updated_by": current_user["id"]
             }}
         )
         return {"message": "Configuration updated successfully"}
