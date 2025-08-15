@@ -458,7 +458,12 @@ const DashboardLayout = ({ children }) => {
           { label: 'Multi-Stage Tests', path: '/multi-stage-configs', icon: Layers },
           { label: 'Evaluation Criteria', path: '/evaluation-criteria', icon: Target },
           { label: 'Officer Assignments', path: '/officer-assignments', icon: UserCheck },
-          { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 }
+          { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 },
+          // Phase 7: Special Tests & Resit Management
+          { label: 'Special Test Categories', path: '/special-test-categories', icon: Award },
+          { label: 'Special Test Configs', path: '/special-test-configs', icon: Settings },
+          { label: 'Resit Management', path: '/resit-management', icon: RefreshCw },
+          { label: 'Failed Stages Analytics', path: '/failed-stages-analytics', icon: AlertTriangle }
         );
       } else if (user.role === 'Regional Director') {
         staffItems.push(
@@ -479,7 +484,9 @@ const DashboardLayout = ({ children }) => {
             { label: 'Test Management', path: '/test-management', icon: FileCheck },
             // Phase 6: Manager access to officer assignments and analytics
             { label: 'Officer Assignments', path: '/officer-assignments', icon: UserCheck },
-            { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 }
+            { label: 'Multi-Stage Analytics', path: '/multi-stage-analytics', icon: BarChart3 },
+            // Phase 7: Manager access to resit management
+            { label: 'Resit Management', path: '/resit-management', icon: RefreshCw }
           );
         } else {
           staffItems.push(
