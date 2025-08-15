@@ -2869,42 +2869,44 @@ class ITABackendTester:
             category_id = self.categories[0]['id']
             bulk_questions_data = {
                 "operation_type": "import_questions",
-                "data": [
-                    {
-                        "category_id": category_id,
-                        "question_type": "multiple_choice",
-                        "question_text": "Bulk Question 1: What is the maximum speed in school zones?",
-                        "options": [
-                            {"text": "25 km/h", "is_correct": True},
-                            {"text": "40 km/h", "is_correct": False},
-                            {"text": "50 km/h", "is_correct": False},
-                            {"text": "60 km/h", "is_correct": False}
-                        ],
-                        "difficulty": "easy",
-                        "explanation": "School zones have reduced speed limits for safety"
-                    },
-                    {
-                        "category_id": category_id,
-                        "question_type": "true_false",
-                        "question_text": "Bulk Question 2: You must stop at a yellow traffic light.",
-                        "correct_answer": False,
-                        "difficulty": "medium",
-                        "explanation": "Yellow light means prepare to stop, not mandatory stop"
-                    },
-                    {
-                        "category_id": category_id,
-                        "question_type": "multiple_choice",
-                        "question_text": "Bulk Question 3: What should you do when approaching a roundabout?",
-                        "options": [
-                            {"text": "Speed up to merge quickly", "is_correct": False},
-                            {"text": "Yield to traffic already in the roundabout", "is_correct": True},
-                            {"text": "Stop completely before entering", "is_correct": False},
-                            {"text": "Honk your horn", "is_correct": False}
-                        ],
-                        "difficulty": "medium",
-                        "explanation": "Always yield to traffic already in the roundabout"
-                    }
-                ]
+                "data": {
+                    "questions": [
+                        {
+                            "category_id": category_id,
+                            "question_type": "multiple_choice",
+                            "question_text": "Bulk Question 1: What is the maximum speed in school zones?",
+                            "options": [
+                                {"text": "25 km/h", "is_correct": True},
+                                {"text": "40 km/h", "is_correct": False},
+                                {"text": "50 km/h", "is_correct": False},
+                                {"text": "60 km/h", "is_correct": False}
+                            ],
+                            "difficulty": "easy",
+                            "explanation": "School zones have reduced speed limits for safety"
+                        },
+                        {
+                            "category_id": category_id,
+                            "question_type": "true_false",
+                            "question_text": "Bulk Question 2: You must stop at a yellow traffic light.",
+                            "correct_answer": False,
+                            "difficulty": "medium",
+                            "explanation": "Yellow light means prepare to stop, not mandatory stop"
+                        },
+                        {
+                            "category_id": category_id,
+                            "question_type": "multiple_choice",
+                            "question_text": "Bulk Question 3: What should you do when approaching a roundabout?",
+                            "options": [
+                                {"text": "Speed up to merge quickly", "is_correct": False},
+                                {"text": "Yield to traffic already in the roundabout", "is_correct": True},
+                                {"text": "Stop completely before entering", "is_correct": False},
+                                {"text": "Honk your horn", "is_correct": False}
+                            ],
+                            "difficulty": "medium",
+                            "explanation": "Always yield to traffic already in the roundabout"
+                        }
+                    ]
+                }
             }
             
             success, response = self.make_request('POST', 'bulk/questions', bulk_questions_data,
