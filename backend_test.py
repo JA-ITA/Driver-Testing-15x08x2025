@@ -2626,6 +2626,9 @@ class ITABackendTester:
             # Phase 7: Special Tests & Resit Management System
             self.run_phase_7_tests()
             
+            # User Management API Tests
+            self.run_user_management_tests()
+            
         except Exception as e:
             print(f"💥 Critical error during testing: {str(e)}")
             return False
