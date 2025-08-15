@@ -3133,6 +3133,313 @@ const ScheduleManagement = () => {
   );
 };
 
+// User Management Component (Admin Only)
+const UserManagement = () => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [includeDeleted, setIncludeDeleted] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: '',
+    is_active: true
+  });
+
+  const USER_ROLES = [
+    'Candidate',
+    'Driver Assessment Officer',
+    'Manager',
+    'Administrator',
+    'Regional Director'
+  ];
+
+  useEffect(() => {
+    fetchUsers();
+  }, [includeDeleted]);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get(`${API}/admin/users?include_deleted=${includeDeleted}`);
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingUser) {
+        await axios.put(`${API}/admin/users/${editingUser.id}`, formData);
+      } else {
+        await axios.post(`${API}/admin/users`, formData);
+      }
+      
+      resetForm();
+      fetchUsers();
+    } catch (error) {
+      console.error('Error saving user:', error);
+      alert('Error saving user. Please try again.');
+    }
+  };
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setFormData({
+      email: user.email,
+      password: '',
+      full_name: user.full_name,
+      role: user.role,
+      is_active: user.is_active
+    });
+    setShowCreateForm(true);
+  };
+
+  const handleDelete = async (userId) => {
+    if (window.confirm('Are you sure you want to delete this user?')) {
+      try {
+        await axios.delete(`${API}/admin/users/${userId}`);
+        fetchUsers();
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        alert('Error deleting user. Please try again.');
+      }
+    }
+  };
+
+  const handleRestore = async (userId) => {
+    try {
+      await axios.post(`${API}/admin/users/${userId}/restore`);
+      fetchUsers();
+    } catch (error) {
+      console.error('Error restoring user:', error);
+      alert('Error restoring user. Please try again.');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      email: '',
+      password: '',
+      full_name: '',
+      role: '',
+      is_active: true
+    });
+    setEditingUser(null);
+    setShowCreateForm(false);
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <div className="text-lg">Loading users...</div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">User Management</h1>
+            <p className="text-slate-600">Manage system users and assign roles</p>
+          </div>
+          <Button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add User
+          </Button>
+        </div>
+
+        <div className="flex items-center space-x-4">
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => setIncludeDeleted(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            <span className="text-sm text-slate-600">Include deleted users</span>
+          </label>
+        </div>
+
+        {showCreateForm && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>{editingUser ? 'Edit User' : 'Create New User'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      required
+                      disabled={editingUser}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="full_name">Full Name</Label>
+                    <Input
+                      id="full_name"
+                      value={formData.full_name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role</Label>
+                    <Select onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select role" value={formData.role} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {USER_ROLES.map((role) => (
+                          <SelectItem key={role} value={role}>{role}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password {editingUser && '(leave blank to keep current)'}</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                      required={!editingUser}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="is_active"
+                    checked={formData.is_active}
+                    onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    className="rounded border-slate-300"
+                  />
+                  <Label htmlFor="is_active">Active User</Label>
+                </div>
+
+                <div className="flex space-x-3">
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    {editingUser ? 'Update User' : 'Create User'}
+                  </Button>
+                  <Button type="button" onClick={resetForm} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-slate-800">
+            System Users ({users.length})
+          </h2>
+          
+          <div className="grid gap-4">
+            {users.map((user) => (
+              <Card key={user.id} className={`shadow-sm ${user.is_deleted ? 'border-red-200 bg-red-50' : 'border-slate-200'}`}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center space-x-3">
+                        <h3 className="font-medium text-slate-800">{user.full_name}</h3>
+                        <Badge className={
+                          user.role === 'Administrator' ? 'bg-purple-100 text-purple-800' :
+                          user.role === 'Manager' ? 'bg-blue-100 text-blue-800' :
+                          user.role === 'Driver Assessment Officer' ? 'bg-orange-100 text-orange-800' :
+                          user.role === 'Regional Director' ? 'bg-indigo-100 text-indigo-800' :
+                          'bg-gray-100 text-gray-800'
+                        }>
+                          {user.role}
+                        </Badge>
+                        {!user.is_active && (
+                          <Badge className="bg-red-100 text-red-800">Inactive</Badge>
+                        )}
+                        {user.is_deleted && (
+                          <Badge className="bg-red-200 text-red-900">Deleted</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-600">{user.email}</p>
+                      <div className="text-xs text-slate-500">
+                        Created: {new Date(user.created_at).toLocaleDateString()} 
+                        {user.created_by && ` by ${user.created_by}`}
+                      </div>
+                    </div>
+                    <div className="flex space-x-2">
+                      {user.is_deleted ? (
+                        <Button
+                          onClick={() => handleRestore(user.id)}
+                          variant="outline"
+                          size="sm"
+                          className="text-green-600 border-green-600 hover:bg-green-50"
+                        >
+                          Restore
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={() => handleEdit(user)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            onClick={() => handleDelete(user.id)}
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {users.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <Users className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Users Found</h3>
+                <p className="text-slate-600">
+                  {includeDeleted ? 'No users in the system.' : 'No active users found. Try including deleted users.'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
 // Main App Component
 function App() {
   return (
