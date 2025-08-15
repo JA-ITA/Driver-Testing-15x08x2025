@@ -8279,4 +8279,1186 @@ const FailedStagesAnalytics = () => {
   );
 };
 
+// =============================================================================
+// PHASE 8: CERTIFICATION & ADVANCED ADMIN FEATURES COMPONENTS
+// =============================================================================
+
+// Certificate Generation Component
+const CertificateGeneration = () => {
+  const { user } = useAuth();
+  const [certificates, setCertificates] = useState([]);
+  const [completedSessions, setCompletedSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [filter, setFilter] = useState({ candidate_name: '', type: '', status: '' });
+  const [formData, setFormData] = useState({
+    session_id: '',
+    certificate_type: 'provisional',
+    notes: ''
+  });
+
+  useEffect(() => {
+    fetchCertificates();
+    fetchCompletedSessions();
+  }, [filter]);
+
+  const fetchCertificates = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filter.candidate_name) params.append('candidate_name', filter.candidate_name);
+      if (filter.type) params.append('type', filter.type);
+      if (filter.status) params.append('status', filter.status);
+      
+      const response = await axios.get(`${API}/certificates?${params}`);
+      setCertificates(response.data);
+    } catch (error) {
+      console.error('Error fetching certificates:', error);
+    }
+  };
+
+  const fetchCompletedSessions = async () => {
+    try {
+      const response = await axios.get(`${API}/test-sessions?status=completed`);
+      setCompletedSessions(response.data);
+    } catch (error) {
+      console.error('Error fetching completed sessions:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleCreateCertificate = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(`${API}/certificates`, formData);
+      setShowCreateForm(false);
+      setFormData({ session_id: '', certificate_type: 'provisional', notes: '' });
+      fetchCertificates();
+      alert('Certificate created successfully!');
+    } catch (error) {
+      alert('Error creating certificate: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleUpdateCertificateStatus = async (certificateId, newStatus) => {
+    try {
+      await axios.put(`${API}/certificates/${certificateId}`, {
+        status: newStatus
+      });
+      fetchCertificates();
+      alert('Certificate status updated successfully!');
+    } catch (error) {
+      alert('Error updating certificate: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-800 border-green-300';
+      case 'suspended': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+      case 'revoked': return 'bg-red-100 text-red-800 border-red-300';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300';
+    }
+  };
+
+  const getCertificateTypeColor = (type) => {
+    switch (type) {
+      case 'provisional': return 'bg-blue-100 text-blue-800';
+      case 'competency': return 'bg-purple-100 text-purple-800';
+      case 'ppv': return 'bg-orange-100 text-orange-800';
+      case 'commercial': return 'bg-indigo-100 text-indigo-800';
+      case 'hazmat': return 'bg-red-100 text-red-800';
+      default: return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">Certificate Generation</h2>
+            <p className="text-slate-600 mt-1">Generate and manage provisional driver's licenses and certificates of competency.</p>
+          </div>
+          {['Administrator', 'Manager', 'Driver Assessment Officer'].includes(user.role) && (
+            <Button
+              onClick={() => setShowCreateForm(!showCreateForm)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Generate Certificate
+            </Button>
+          )}
+        </div>
+
+        {showCreateForm && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>Generate New Certificate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateCertificate} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="session_id">Completed Test Session *</Label>
+                    <Select
+                      value={formData.session_id}
+                      onValueChange={(value) => setFormData({ ...formData, session_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select completed session" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {completedSessions.map((session) => (
+                          <SelectItem key={session.id} value={session.id}>
+                            {session.candidate_name} - {session.category_name} - {new Date(session.completed_at).toLocaleDateString()}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="certificate_type">Certificate Type *</Label>
+                    <Select
+                      value={formData.certificate_type}
+                      onValueChange={(value) => setFormData({ ...formData, certificate_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select certificate type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="provisional">Provisional License</SelectItem>
+                        <SelectItem value="competency">Certificate of Competency</SelectItem>
+                        <SelectItem value="ppv">PPV License</SelectItem>
+                        <SelectItem value="commercial">Commercial License</SelectItem>
+                        <SelectItem value="hazmat">HazMat License</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="notes">Notes (Optional)</Label>
+                  <Textarea
+                    id="notes"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                    placeholder="Additional notes about this certificate..."
+                    rows={3}
+                  />
+                </div>
+                <div className="flex space-x-3">
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    Generate Certificate
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowCreateForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Filters */}
+        <Card className="shadow-sm border-slate-200">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label>Search by Candidate Name</Label>
+                <Input
+                  placeholder="Enter candidate name..."
+                  value={filter.candidate_name}
+                  onChange={(e) => setFilter({ ...filter, candidate_name: e.target.value })}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Certificate Type</Label>
+                <Select value={filter.type} onValueChange={(value) => setFilter({ ...filter, type: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Types</SelectItem>
+                    <SelectItem value="provisional">Provisional</SelectItem>
+                    <SelectItem value="competency">Competency</SelectItem>
+                    <SelectItem value="ppv">PPV</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                    <SelectItem value="hazmat">HazMat</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select value={filter.status} onValueChange={(value) => setFilter({ ...filter, status: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                    <SelectItem value="revoked">Revoked</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Certificates List */}
+        <div className="space-y-4">
+          {certificates.map((certificate) => (
+            <Card key={certificate.id} className="shadow-sm border-slate-200">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center space-x-3">
+                      <Award className="h-5 w-5 text-emerald-600" />
+                      <h3 className="text-lg font-medium text-slate-800">
+                        Certificate #{certificate.certificate_number}
+                      </h3>
+                      <Badge className={getCertificateTypeColor(certificate.certificate_type)}>
+                        {certificate.certificate_type.toUpperCase()}
+                      </Badge>
+                      <Badge className={`px-2 py-1 text-xs ${getStatusColor(certificate.status)}`}>
+                        {certificate.status.toUpperCase()}
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
+                      <div>
+                        <span className="font-medium">Candidate:</span> {certificate.candidate_name}
+                      </div>
+                      <div>
+                        <span className="font-medium">Test Category:</span> {certificate.test_category}
+                      </div>
+                      <div>
+                        <span className="font-medium">Issued Date:</span> {new Date(certificate.issued_date).toLocaleDateString()}
+                      </div>
+                      <div>
+                        <span className="font-medium">Valid Until:</span> {new Date(certificate.valid_until).toLocaleDateString()}
+                      </div>
+                    </div>
+                    
+                    {certificate.notes && (
+                      <div className="text-sm">
+                        <span className="font-medium text-slate-700">Notes:</span>
+                        <p className="text-slate-600 mt-1">{certificate.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {['Administrator', 'Manager'].includes(user.role) && (
+                    <div className="flex space-x-2">
+                      {certificate.status === 'active' && (
+                        <>
+                          <Button
+                            onClick={() => handleUpdateCertificateStatus(certificate.id, 'suspended')}
+                            variant="outline"
+                            size="sm"
+                            className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                          >
+                            Suspend
+                          </Button>
+                          <Button
+                            onClick={() => handleUpdateCertificateStatus(certificate.id, 'revoked')}
+                            variant="outline"
+                            size="sm"
+                            className="text-red-600 border-red-600 hover:bg-red-50"
+                          >
+                            Revoke
+                          </Button>
+                        </>
+                      )}
+                      {certificate.status === 'suspended' && (
+                        <Button
+                          onClick={() => handleUpdateCertificateStatus(certificate.id, 'active')}
+                          variant="outline"
+                          size="sm"
+                          className="text-green-600 border-green-600 hover:bg-green-50"
+                        >
+                          Reactivate
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {certificates.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <Award className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Certificates Found</h3>
+                <p className="text-slate-600">No certificates match your current filters or none have been generated yet.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Advanced Reporting Dashboard Component
+const AdvancedReporting = () => {
+  const [reports, setReports] = useState({
+    systemOverview: null,
+    testPerformance: null,
+    officerPerformance: null,
+    certificateAnalytics: null
+  });
+  const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState({
+    start_date: '',
+    end_date: '',
+    category: ''
+  });
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    fetchReports();
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const fetchReports = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (dateRange.start_date) params.append('start_date', dateRange.start_date);
+      if (dateRange.end_date) params.append('end_date', dateRange.end_date);
+      if (dateRange.category) params.append('category', dateRange.category);
+
+      const [systemRes, testRes, officerRes, certRes] = await Promise.all([
+        axios.get(`${API}/reports/system-overview`),
+        axios.get(`${API}/reports/test-performance?${params}`),
+        axios.get(`${API}/reports/officer-performance?${params}`),
+        axios.get(`${API}/reports/certificate-analytics`)
+      ]);
+
+      setReports({
+        systemOverview: systemRes.data,
+        testPerformance: testRes.data,
+        officerPerformance: officerRes.data,
+        certificateAnalytics: certRes.data
+      });
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleFilterChange = () => {
+    setLoading(true);
+    fetchReports();
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Advanced Reporting Dashboard</h2>
+          <p className="text-slate-600 mt-1">Comprehensive system analytics and performance metrics.</p>
+        </div>
+
+        {/* Date Range Filter */}
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <BarChart3 className="h-5 w-5 text-emerald-600" />
+              <span>Report Filters</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={dateRange.start_date}
+                  onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={dateRange.end_date}
+                  onChange={(e) => setDateRange({ ...dateRange, end_date: e.target.value })}
+                  className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={dateRange.category} onValueChange={(value) => setDateRange({ ...dateRange, category: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="All Categories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Categories</SelectItem>
+                    {categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>&nbsp;</Label>
+                <Button onClick={handleFilterChange} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                  Apply Filters
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System Overview */}
+        {reports.systemOverview && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <BarChart3 className="h-5 w-5 text-emerald-600" />
+                <span>System Overview</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-blue-600">{reports.systemOverview.total_users}</div>
+                  <div className="text-sm text-slate-600">Total Users</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-600">{reports.systemOverview.total_candidates}</div>
+                  <div className="text-sm text-slate-600">Total Candidates</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-purple-600">{reports.systemOverview.total_sessions}</div>
+                  <div className="text-sm text-slate-600">Test Sessions</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-orange-600">{reports.systemOverview.total_certificates}</div>
+                  <div className="text-sm text-slate-600">Certificates Issued</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{reports.systemOverview.overall_pass_rate?.toFixed(1)}%</div>
+                  <div className="text-sm text-slate-600">Overall Pass Rate</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-yellow-600">{reports.systemOverview.active_sessions}</div>
+                  <div className="text-sm text-slate-600">Active Sessions</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">{reports.systemOverview.failed_sessions}</div>
+                  <div className="text-sm text-slate-600">Failed Sessions</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Test Performance Analytics */}
+        {reports.testPerformance && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Target className="h-5 w-5 text-emerald-600" />
+                <span>Test Performance Analytics</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Pass Rate by Category</h4>
+                  <div className="space-y-3">
+                    {reports.testPerformance.category_performance?.map((cat, idx) => (
+                      <div key={idx}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>{cat.category_name}</span>
+                          <span>{cat.pass_rate?.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2">
+                          <div 
+                            className="bg-emerald-500 h-2 rounded-full" 
+                            style={{width: `${Math.min(cat.pass_rate || 0, 100)}%`}}
+                          ></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Average Scores</h4>
+                  <div className="space-y-3">
+                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">{reports.testPerformance.average_score?.toFixed(1)}%</div>
+                      <div className="text-sm text-blue-600">Overall Average</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="text-center p-3 bg-green-50 rounded-lg">
+                        <div className="text-lg font-bold text-green-600">{reports.testPerformance.sessions_count}</div>
+                        <div className="text-xs text-green-600">Total Sessions</div>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 rounded-lg">
+                        <div className="text-lg font-bold text-purple-600">{reports.testPerformance.passed_sessions}</div>
+                        <div className="text-xs text-purple-600">Passed</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Officer Performance */}
+        {reports.officerPerformance && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <UserCheck className="h-5 w-5 text-emerald-600" />
+                <span>Officer Performance Metrics</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <div className="text-2xl font-bold text-slate-800">{reports.officerPerformance.total_officers}</div>
+                  <div className="text-sm text-slate-600">Active Officers</div>
+                </div>
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <div className="text-2xl font-bold text-slate-800">{reports.officerPerformance.total_assignments}</div>
+                  <div className="text-sm text-slate-600">Total Assignments</div>
+                </div>
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <div className="text-2xl font-bold text-slate-800">{reports.officerPerformance.average_assignments?.toFixed(1)}</div>
+                  <div className="text-sm text-slate-600">Avg per Officer</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Certificate Analytics */}
+        {reports.certificateAnalytics && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Award className="h-5 w-5 text-emerald-600" />
+                <span>Certificate Analytics</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Certificate Distribution</h4>
+                  <div className="space-y-3">
+                    {reports.certificateAnalytics.type_distribution?.map((type, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded">
+                        <span className="capitalize">{type.certificate_type}</span>
+                        <Badge className="bg-emerald-100 text-emerald-800">{type.count}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium text-slate-800 mb-3">Monthly Trends</h4>
+                  <div className="space-y-3">
+                    {reports.certificateAnalytics.monthly_trends?.map((month, idx) => (
+                      <div key={idx} className="flex justify-between items-center p-2 bg-slate-50 rounded">
+                        <span>{month.month}</span>
+                        <span className="font-medium">{month.certificates_issued}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// Bulk Operations Component
+const BulkOperations = () => {
+  const [activeTab, setActiveTab] = useState('users');
+  const [bulkUsers, setBulkUsers] = useState('');
+  const [bulkQuestions, setBulkQuestions] = useState(null);
+  const [exportCategory, setExportCategory] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState(null);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+
+  const handleBulkUserCreation = async () => {
+    if (!bulkUsers.trim()) {
+      alert('Please enter user data');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      let users;
+      try {
+        users = JSON.parse(bulkUsers);
+      } catch (e) {
+        // Try to parse as CSV
+        const lines = bulkUsers.split('\n').filter(line => line.trim());
+        const headers = lines[0].split(',').map(h => h.trim());
+        users = lines.slice(1).map(line => {
+          const values = line.split(',').map(v => v.trim());
+          const user = {};
+          headers.forEach((header, idx) => {
+            user[header] = values[idx];
+          });
+          return user;
+        });
+      }
+
+      const response = await axios.post(`${API}/bulk/users`, { users });
+      setResults(response.data);
+      setBulkUsers('');
+      alert(`Bulk user creation completed. ${response.data.successful_count} users created successfully.`);
+    } catch (error) {
+      alert('Error creating users: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  const handleBulkQuestionImport = async () => {
+    if (!bulkQuestions) {
+      alert('Please select a file');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', bulkQuestions);
+
+      const response = await axios.post(`${API}/bulk/questions`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setResults(response.data);
+      setBulkQuestions(null);
+      alert(`Bulk question import completed. ${response.data.successful_count} questions imported successfully.`);
+    } catch (error) {
+      alert('Error importing questions: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  const handleQuestionExport = async () => {
+    setLoading(true);
+    try {
+      const params = exportCategory ? `?category_id=${exportCategory}` : '';
+      const response = await axios.get(`${API}/bulk/export/questions${params}`, {
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([response.data], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `questions_export_${exportCategory || 'all'}.json`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+
+      alert('Questions exported successfully!');
+    } catch (error) {
+      alert('Error exporting questions: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-800">Bulk Operations</h2>
+          <p className="text-slate-600 mt-1">Perform bulk operations for efficient data management.</p>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="users">Bulk User Creation</TabsTrigger>
+            <TabsTrigger value="import">Import Questions</TabsTrigger>
+            <TabsTrigger value="export">Export Questions</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="users">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Users className="h-5 w-5 text-emerald-600" />
+                  <span>Bulk User Creation</span>
+                </CardTitle>
+                <CardDescription>
+                  Create multiple users at once using JSON or CSV format
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="bulk_users">User Data (JSON or CSV)</Label>
+                  <Textarea
+                    id="bulk_users"
+                    value={bulkUsers}
+                    onChange={(e) => setBulkUsers(e.target.value)}
+                    className="min-h-64 font-mono text-sm"
+                    placeholder='JSON Format:
+[
+  {
+    "email": "user1@example.com",
+    "full_name": "John Doe",
+    "role": "Candidate",
+    "password": "password123"
+  },
+  {
+    "email": "user2@example.com", 
+    "full_name": "Jane Smith",
+    "role": "Manager",
+    "password": "password123"
+  }
+]
+
+CSV Format:
+email,full_name,role,password
+user1@example.com,John Doe,Candidate,password123
+user2@example.com,Jane Smith,Manager,password123'
+                  />
+                </div>
+                <Button
+                  onClick={handleBulkUserCreation}
+                  disabled={loading}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {loading ? 'Creating Users...' : 'Create Users'}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="import">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Upload className="h-5 w-5 text-emerald-600" />
+                  <span>Bulk Question Import</span>
+                </CardTitle>
+                <CardDescription>
+                  Import questions from a JSON file
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="question_file">Select Question File (JSON)</Label>
+                  <Input
+                    id="question_file"
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => setBulkQuestions(e.target.files[0])}
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                  />
+                </div>
+                <Button
+                  onClick={handleBulkQuestionImport}
+                  disabled={loading || !bulkQuestions}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {loading ? 'Importing Questions...' : 'Import Questions'}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="export">
+            <Card className="shadow-sm border-slate-200">
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Download className="h-5 w-5 text-emerald-600" />
+                  <span>Question Export</span>
+                </CardTitle>
+                <CardDescription>
+                  Export questions to JSON file
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Category Filter (Optional)</Label>
+                  <Select value={exportCategory} onValueChange={setExportCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">All Categories</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={handleQuestionExport}
+                  disabled={loading}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {loading ? 'Exporting...' : 'Export Questions'}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {results && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>Operation Results</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">{results.successful_count || 0}</div>
+                  <div className="text-sm text-green-600">Successful</div>
+                </div>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">{results.error_count || 0}</div>
+                  <div className="text-sm text-red-600">Errors</div>
+                </div>
+              </div>
+              {results.errors && results.errors.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="font-medium text-slate-800 mb-2">Errors:</h4>
+                  <div className="space-y-2">
+                    {results.errors.map((error, idx) => (
+                      <div key={idx} className="text-sm p-2 bg-red-50 border border-red-200 rounded">
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
+// System Configuration Component
+const SystemConfiguration = () => {
+  const [configs, setConfigs] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingConfig, setEditingConfig] = useState(null);
+  const [formData, setFormData] = useState({
+    category: '',
+    key: '',
+    value: '',
+    description: ''
+  });
+  const [selectedCategory, setSelectedCategory] = useState('');
+
+  useEffect(() => {
+    fetchConfigurations();
+    fetchCategories();
+  }, [selectedCategory]);
+
+  const fetchConfigurations = async () => {
+    try {
+      const params = selectedCategory ? `?category=${selectedCategory}` : '';
+      const response = await axios.get(`${API}/system/config${params}`);
+      setConfigs(response.data);
+    } catch (error) {
+      console.error('Error fetching configurations:', error);
+    }
+    setLoading(false);
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const response = await axios.get(`${API}/system/config/categories`);
+      setCategories(response.data);
+    } catch (error) {
+      console.error('Error fetching config categories:', error);
+    }
+  };
+
+  const handleCreateConfig = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingConfig) {
+        await axios.put(`${API}/system/config/${formData.category}/${formData.key}`, {
+          value: formData.value,
+          description: formData.description
+        });
+        alert('Configuration updated successfully!');
+      } else {
+        await axios.post(`${API}/system/config`, formData);
+        alert('Configuration created successfully!');
+      }
+      
+      setShowCreateForm(false);
+      setEditingConfig(null);
+      setFormData({ category: '', key: '', value: '', description: '' });
+      fetchConfigurations();
+    } catch (error) {
+      alert('Error saving configuration: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const handleEdit = (config) => {
+    setEditingConfig(config);
+    setFormData({
+      category: config.category,
+      key: config.key,
+      value: config.value,
+      description: config.description || ''
+    });
+    setShowCreateForm(true);
+  };
+
+  const resetForm = () => {
+    setShowCreateForm(false);
+    setEditingConfig(null);
+    setFormData({ category: '', key: '', value: '', description: '' });
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin h-8 w-8 border-4 border-emerald-500 border-t-transparent rounded-full"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-800">System Configuration</h2>
+            <p className="text-slate-600 mt-1">Manage application settings and configuration parameters.</p>
+          </div>
+          <Button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Configuration
+          </Button>
+        </div>
+
+        {/* Category Filter */}
+        <Card className="shadow-sm border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-4">
+              <Label>Filter by Category:</Label>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        {showCreateForm && (
+          <Card className="shadow-sm border-slate-200">
+            <CardHeader>
+              <CardTitle>{editingConfig ? 'Edit Configuration' : 'Create Configuration'}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateConfig} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category *</Label>
+                    <Input
+                      id="category"
+                      value={formData.category}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      required
+                      disabled={editingConfig}
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      placeholder="e.g., test_settings, email, security"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="key">Configuration Key *</Label>
+                    <Input
+                      id="key"
+                      value={formData.key}
+                      onChange={(e) => setFormData({ ...formData, key: e.target.value })}
+                      required
+                      disabled={editingConfig}
+                      className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                      placeholder="e.g., max_attempts, session_timeout"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="value">Value *</Label>
+                  <Input
+                    id="value"
+                    value={formData.value}
+                    onChange={(e) => setFormData({ ...formData, value: e.target.value })}
+                    required
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                    placeholder="Configuration value"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    className="border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+                    placeholder="Describe what this configuration controls..."
+                    rows={3}
+                  />
+                </div>
+                <div className="flex space-x-3">
+                  <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    {editingConfig ? 'Update Configuration' : 'Create Configuration'}
+                  </Button>
+                  <Button type="button" onClick={resetForm} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Configurations List */}
+        <div className="space-y-4">
+          {configs.map((config) => (
+            <Card key={`${config.category}_${config.key}`} className="shadow-sm border-slate-200">
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center space-x-3">
+                      <Cog className="h-5 w-5 text-emerald-600" />
+                      <h3 className="text-lg font-medium text-slate-800">{config.key}</h3>
+                      <Badge className="bg-slate-100 text-slate-700">
+                        {config.category}
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Value:</span>
+                        <p className="text-slate-800 font-mono">{config.value}</p>
+                      </div>
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Last Updated:</span>
+                        <p className="text-slate-800">{new Date(config.updated_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    
+                    {config.description && (
+                      <div>
+                        <span className="text-sm font-medium text-slate-600">Description:</span>
+                        <p className="text-slate-700">{config.description}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={() => handleEdit(config)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          
+          {configs.length === 0 && (
+            <Card className="shadow-sm border-slate-200">
+              <CardContent className="p-8 text-center">
+                <Cog className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-800 mb-2">No Configurations Found</h3>
+                <p className="text-slate-600">No configurations match your current filter or none have been created yet.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
