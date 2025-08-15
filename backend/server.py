@@ -1070,6 +1070,14 @@ async def start_test_session(test_data: TestSession, current_user: dict = Depend
                 detail="Only approved candidates can start tests"
             )
         test_data.candidate_id = candidate["id"]
+        
+        # PHASE 5: Check identity verification requirement
+        access_check = await check_test_access(test_data.test_config_id, current_user)
+        if not access_check["access_granted"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=access_check["message"]
+            )
     else:
         # Staff members can start tests for testing purposes
         candidate = await db.candidates.find_one({"id": test_data.candidate_id})
