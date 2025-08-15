@@ -467,7 +467,12 @@ const DashboardLayout = ({ children }) => {
           { label: 'Special Test Categories', path: '/special-test-categories', icon: Award },
           { label: 'Special Test Configs', path: '/special-test-configs', icon: Settings },
           { label: 'Resit Management', path: '/resit-management', icon: RefreshCw },
-          { label: 'Failed Stages Analytics', path: '/failed-stages-analytics', icon: AlertTriangle }
+          { label: 'Failed Stages Analytics', path: '/failed-stages-analytics', icon: AlertTriangle },
+          // Phase 8: Certification & Advanced Admin Features
+          { label: 'Certificate Generation', path: '/certificates', icon: Award },
+          { label: 'Advanced Reports', path: '/advanced-reports', icon: BarChart3 },
+          { label: 'Bulk Operations', path: '/bulk-operations', icon: Database },
+          { label: 'System Configuration', path: '/system-config', icon: Cog }
         );
       } else if (user.role === 'Regional Director') {
         staffItems.push(
