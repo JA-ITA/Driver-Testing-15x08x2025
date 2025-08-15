@@ -2641,11 +2641,12 @@ class ITABackendTester:
                 # Test creating another certificate for filtering tests
                 commercial_cert_data = {
                     "candidate_id": candidate_id,
-                    "session_id": str(uuid.uuid4()),
+                    "test_session_id": str(uuid.uuid4()),
                     "certificate_type": "commercial_license",
                     "certificate_number": f"CDL{datetime.now().strftime('%Y%m%d')}{candidate_id[:6].upper()}",
-                    "issued_date": datetime.now().strftime('%Y-%m-%d'),
-                    "valid_until": "2027-12-31",
+                    "issued_by": self.users['admin']['id'],
+                    "valid_from": datetime.now().isoformat(),
+                    "valid_until": "2027-12-31T23:59:59",
                     "restrictions": ["Class B vehicles only"],
                     "notes": "Commercial driver's license certificate"
                 }
