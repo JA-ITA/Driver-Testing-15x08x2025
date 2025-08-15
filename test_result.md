@@ -165,20 +165,53 @@ backend:
         agent: "testing"
         comment: "COMPREHENSIVE TESTING COMPLETED: Phase 5 Identity Verification APIs working perfectly. ✅ Create Identity Verification (with photo storage for ID document and live capture). ✅ Get Identity Verification (retrieve verification status and details). ✅ Update Identity Verification (modify verification notes and status). ✅ Enhanced Test Access Control (correctly enforces verification requirement and appointment date restrictions). ✅ Photo storage working with base64 encoded images. ✅ Verification workflow complete with proper status tracking. All identity verification functionality operational."
 
-  - task: "Phase 5 Enhanced Admin Management API"
+  - task: "Phase 6 Multi-Stage Test Configuration APIs"
     implemented: true
-    working: true
+    working: false
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: false
         agent: "main"
-        comment: "Enhanced admin management APIs implemented: complete user/candidate CRUD operations, soft delete/restore functionality, admin-level candidate creation with status control"
-      - working: true
-        agent: "testing"
-        comment: "COMPREHENSIVE TESTING COMPLETED: Phase 5 Enhanced Admin Management APIs working excellently. ✅ Admin User Management (create/get/update/soft delete/restore users with proper role validation). ✅ Admin Candidate Management (create/get/update/soft delete/restore candidates with status control). ✅ Role-based access control (admin-only operations properly protected). ✅ Soft delete/restore functionality working correctly. ✅ Enhanced candidate creation with direct status setting. ✅ Complete CRUD operations for both users and candidates. All enhanced admin management functionality operational."
+        comment: "Phase 6 Multi-Stage Testing System backend APIs implemented: multi-stage test configurations, evaluation criteria management, stage-specific evaluation, officer assignments, progression logic (Written → Yard → Road), and analytics dashboard. Ready for testing."
+
+  - task: "Phase 6 Evaluation Criteria Management APIs"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "main"
+        comment: "Evaluation criteria APIs implemented: admin can create/manage criteria for yard and road tests with scoring, critical criteria flags, and stage-specific configurations. Ready for testing."
+
+  - task: "Phase 6 Multi-Stage Test Session Management APIs"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "main"
+        comment: "Multi-stage test session APIs implemented: session creation, stage progression tracking, officer assignments, stage evaluation with checklist scoring, and completion logic. Ready for testing."
+
+  - task: "Phase 6 Officer Assignment and Stage Evaluation APIs"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "main"
+        comment: "Officer assignment and stage evaluation APIs implemented: automatic officer assignment, checklist-based evaluation for yard/road tests, scoring calculation with critical criteria validation, and progression logic. Ready for testing."
 
 frontend:
   - task: "Question Approvals Interface"
