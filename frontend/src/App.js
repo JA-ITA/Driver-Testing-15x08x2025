@@ -3343,6 +3343,55 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Phase 7: Special Tests & Resit Management Routes */}
+          <Route
+            path="/special-test-categories"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <SpecialTestCategories />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/special-test-configs"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <SpecialTestConfigurations />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/resit-management"
+            element={
+              <ProtectedRoute allowedRoles={['Manager', 'Administrator']}>
+                <ResitManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-resits"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <MyResits />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reschedule-appointment"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <RescheduleAppointment />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/failed-stages-analytics"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <FailedStagesAnalytics />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
