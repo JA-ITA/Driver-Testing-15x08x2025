@@ -3174,6 +3174,558 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+# =============================================================================
+# PHASE 7: SPECIAL TESTS & RESIT MANAGEMENT SYSTEM
+# =============================================================================
+
+# Special Test Category Models
+class SpecialTestCategory(BaseModel):
+    name: str
+    description: Optional[str] = None
+    category_code: str  # "PPV", "CDL", "HMT" 
+    requirements: Optional[List[str]] = []  # List of requirements/prerequisites
+    is_active: bool = True
+
+class SpecialTestCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    requirements: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+# Special Test Configuration Models  
+class SpecialTestConfiguration(BaseModel):
+    category_id: str
+    special_category_id: str  # Reference to SpecialTestCategory
+    name: str
+    description: Optional[str] = None
+    # Customizable parameters for special tests
+    written_total_questions: int = 25
+    written_pass_mark_percentage: int = 80  # Higher pass mark for special tests
+    written_time_limit_minutes: int = 40
+    written_difficulty_distribution: Optional[dict] = {"easy": 20, "medium": 50, "hard": 30}
+    # Enhanced practical requirements
+    yard_pass_mark_percentage: int = 80
+    road_pass_mark_percentage: int = 80
+    # Special test specific parameters
+    requires_medical_certificate: bool = False
+    requires_background_check: bool = False
+    minimum_experience_years: Optional[int] = None
+    additional_documents: Optional[List[str]] = []
+    is_active: bool = True
+    requires_officer_assignment: bool = True
+    
+class SpecialTestConfigurationUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    written_total_questions: Optional[int] = None
+    written_pass_mark_percentage: Optional[int] = None
+    written_time_limit_minutes: Optional[int] = None
+    written_difficulty_distribution: Optional[dict] = None
+    yard_pass_mark_percentage: Optional[int] = None
+    road_pass_mark_percentage: Optional[int] = None
+    requires_medical_certificate: Optional[bool] = None
+    requires_background_check: Optional[bool] = None
+    minimum_experience_years: Optional[int] = None
+    additional_documents: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    requires_officer_assignment: Optional[bool] = None
+
+# Resit Management Models
+class ResitRequest(BaseModel):
+    original_session_id: str
+    failed_stages: List[str]  # ["written", "yard", "road"]
+    requested_appointment_date: str  # "2024-07-15"
+    requested_time_slot: str  # "09:00-10:00"
+    reason: Optional[str] = None
+    notes: Optional[str] = None
+
+class ResitSession(BaseModel):
+    original_session_id: str
+    candidate_id: str
+    resit_stages: List[str]  # Only failed stages to be retaken
+    appointment_id: Optional[str] = None
+    status: str = "pending"  # "pending", "scheduled", "in_progress", "completed", "failed"
+    resit_attempt_number: int = 1
+    photo_recaptured: bool = False
+    identity_reverified: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ResitSessionUpdate(BaseModel):
+    status: Optional[str] = None
+    resit_stages: Optional[List[str]] = None
+    photo_recaptured: Optional[bool] = None
+    identity_reverified: Optional[bool] = None
+
+# Test Rescheduling Models
+class RescheduleRequest(BaseModel):
+    appointment_id: str
+    new_date: str  # "2024-07-15"
+    new_time_slot: str  # "09:00-10:00"
+    reason: str
+    notes: Optional[str] = None
+
+class RescheduleHistory(BaseModel):
+    appointment_id: str
+    original_date: str
+    original_time_slot: str
+    new_date: str
+    new_time_slot: str
+    reason: str
+    rescheduled_by: str  # User ID
+    rescheduled_at: datetime = Field(default_factory=datetime.utcnow)
+
+# Failed Stage Tracking Models
+class FailedStageRecord(BaseModel):
+    session_id: str
+    candidate_id: str
+    stage: str  # "written", "yard", "road"
+    failure_date: datetime = Field(default_factory=datetime.utcnow)
+    score_achieved: Optional[float] = None
+    pass_mark_required: Optional[float] = None
+    failure_reason: Optional[str] = None
+    can_resit: bool = True
+    resit_count: int = 0
+    max_resits_allowed: int = 3
+
+# =============================================================================
+# PHASE 7: SPECIAL TESTS & RESIT MANAGEMENT APIs
+# =============================================================================
+
+# Special Test Category APIs
+@api_router.post("/special-test-categories")
+async def create_special_test_category(category_data: SpecialTestCategory, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create special test categories
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create special test categories"
+        )
+    
+    # Check if category code already exists
+    existing_category = await db.special_test_categories.find_one({"category_code": category_data.category_code})
+    if existing_category:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Special test category with code '{category_data.category_code}' already exists"
+        )
+    
+    # Create category document
+    category_doc = {
+        "id": str(uuid.uuid4()),
+        **category_data.dict(),
+        "created_at": datetime.utcnow(),
+        "created_by": current_user["email"]
+    }
+    
+    await db.special_test_categories.insert_one(category_doc)
+    return {"message": "Special test category created successfully", "category_id": category_doc["id"]}
+
+@api_router.get("/special-test-categories")
+async def get_special_test_categories(current_user: dict = Depends(get_current_user)):
+    # All authenticated users can view active special test categories
+    categories = await db.special_test_categories.find({"is_active": True}).to_list(1000)
+    return serialize_doc(categories)
+
+@api_router.put("/special-test-categories/{category_id}")
+async def update_special_test_category(
+    category_id: str, 
+    category_data: SpecialTestCategoryUpdate, 
+    current_user: dict = Depends(get_current_user)
+):
+    # Only Administrators can update special test categories
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can update special test categories"
+        )
+    
+    # Check if category exists
+    category = await db.special_test_categories.find_one({"id": category_id})
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Special test category not found"
+        )
+    
+    # Update category
+    update_data = {k: v for k, v in category_data.dict().items() if v is not None}
+    if update_data:
+        update_data["updated_at"] = datetime.utcnow()
+        update_data["updated_by"] = current_user["email"]
+        await db.special_test_categories.update_one({"id": category_id}, {"$set": update_data})
+    
+    return {"message": "Special test category updated successfully"}
+
+# Special Test Configuration APIs
+@api_router.post("/special-test-configs")
+async def create_special_test_config(config_data: SpecialTestConfiguration, current_user: dict = Depends(get_current_user)):
+    # Only Administrators can create special test configurations
+    if current_user["role"] != "Administrator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only administrators can create special test configurations"
+        )
+    
+    # Validate category and special category exist
+    category = await db.test_categories.find_one({"id": config_data.category_id, "is_active": True})
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test category not found"
+        )
+    
+    special_category = await db.special_test_categories.find_one({"id": config_data.special_category_id, "is_active": True})
+    if not special_category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Special test category not found"
+        )
+    
+    # Create configuration document
+    config_doc = {
+        "id": str(uuid.uuid4()),
+        **config_data.dict(),
+        "created_at": datetime.utcnow(),
+        "created_by": current_user["email"]
+    }
+    
+    await db.special_test_configurations.insert_one(config_doc)
+    return {"message": "Special test configuration created successfully", "config_id": config_doc["id"]}
+
+@api_router.get("/special-test-configs")
+async def get_special_test_configs(current_user: dict = Depends(get_current_user)):
+    # All authenticated users can view active special test configurations
+    configs = await db.special_test_configurations.find({"is_active": True}).to_list(1000)
+    return serialize_doc(configs)
+
+@api_router.get("/special-test-configs/{config_id}")
+async def get_special_test_config(config_id: str, current_user: dict = Depends(get_current_user)):
+    config = await db.special_test_configurations.find_one({"id": config_id})
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Special test configuration not found"
+        )
+    return serialize_doc(config)
+
+# Resit Management APIs
+@api_router.post("/resits/request")
+async def request_resit(resit_data: ResitRequest, current_user: dict = Depends(get_current_user)):
+    # Only candidates can request resits for their own sessions
+    if current_user["role"] != "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can request resits"
+        )
+    
+    # Verify the original session exists and belongs to the candidate
+    original_session = await db.multi_stage_test_sessions.find_one({
+        "id": resit_data.original_session_id,
+        "candidate_id": current_user["id"]
+    })
+    
+    if not original_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Original test session not found or access denied"
+        )
+    
+    # Verify the session has failed stages that can be retaken
+    if original_session["status"] == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot request resit for completed session"
+        )
+    
+    # Check which stages actually failed
+    valid_failed_stages = []
+    if "written" in resit_data.failed_stages and original_session.get("written_score", 0) < 75:
+        valid_failed_stages.append("written")
+    if "yard" in resit_data.failed_stages and original_session.get("yard_passed", True) == False:
+        valid_failed_stages.append("yard")  
+    if "road" in resit_data.failed_stages and original_session.get("road_passed", True) == False:
+        valid_failed_stages.append("road")
+    
+    if not valid_failed_stages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid failed stages to resit"
+        )
+    
+    # Check if resit already exists for this session
+    existing_resit = await db.resit_sessions.find_one({"original_session_id": resit_data.original_session_id})
+    if existing_resit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Resit request already exists for this session"
+        )
+    
+    # Create resit session
+    resit_doc = {
+        "id": str(uuid.uuid4()),
+        "original_session_id": resit_data.original_session_id,
+        "candidate_id": current_user["id"],
+        "resit_stages": valid_failed_stages,
+        "status": "pending",
+        "resit_attempt_number": 1,
+        "photo_recaptured": False,
+        "identity_reverified": False,
+        "requested_date": resit_data.requested_appointment_date,
+        "requested_time_slot": resit_data.requested_time_slot,
+        "reason": resit_data.reason,
+        "notes": resit_data.notes,
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.resit_sessions.insert_one(resit_doc)
+    return {"message": "Resit request submitted successfully", "resit_id": resit_doc["id"]}
+
+@api_router.get("/resits/my-resits")
+async def get_my_resits(current_user: dict = Depends(get_current_user)):
+    # Only candidates can view their own resits
+    if current_user["role"] != "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can view their resits"
+        )
+    
+    resits = await db.resit_sessions.find({"candidate_id": current_user["id"]}).to_list(1000)
+    return serialize_doc(resits)
+
+@api_router.get("/resits/all")
+async def get_all_resits(current_user: dict = Depends(get_current_user)):
+    # Only staff can view all resits
+    if current_user["role"] == "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    resits = await db.resit_sessions.find({}).sort("created_at", -1).to_list(1000)
+    return serialize_doc(resits)
+
+@api_router.put("/resits/{resit_id}/approve")
+async def approve_resit(resit_id: str, current_user: dict = Depends(get_current_user)):
+    # Only Managers and Administrators can approve resits
+    if current_user["role"] not in ["Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only managers and administrators can approve resits"
+        )
+    
+    # Find the resit session
+    resit = await db.resit_sessions.find_one({"id": resit_id})
+    if not resit:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Resit session not found"
+        )
+    
+    # Update resit status to scheduled
+    await db.resit_sessions.update_one(
+        {"id": resit_id},
+        {"$set": {
+            "status": "scheduled",
+            "approved_by": current_user["email"],
+            "approved_at": datetime.utcnow()
+        }}
+    )
+    
+    return {"message": "Resit approved successfully"}
+
+# Test Rescheduling APIs
+@api_router.post("/appointments/{appointment_id}/reschedule")
+async def reschedule_appointment(appointment_id: str, reschedule_data: RescheduleRequest, current_user: dict = Depends(get_current_user)):
+    # Verify appointment exists and user has access
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    # Check access rights
+    if current_user["role"] == "Candidate" and appointment["candidate_id"] != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied - not your appointment"
+        )
+    
+    # Check if new time slot is available
+    new_date = reschedule_data.new_date
+    new_time_slot = reschedule_data.new_time_slot
+    
+    # Get schedule availability
+    try:
+        appointment_date = datetime.strptime(new_date, "%Y-%m-%d")
+        day_of_week = appointment_date.weekday()
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        )
+    
+    # Check if date is a holiday
+    holiday = await db.holidays.find_one({"date": new_date})
+    if holiday:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot reschedule to holiday - {holiday['name']}"
+        )
+    
+    # Get schedule config for this day of week
+    schedule_config = await db.schedule_configs.find_one({"day_of_week": day_of_week, "is_active": True})
+    if not schedule_config:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No appointments available on this day"
+        )
+    
+    # Check slot availability
+    existing_appointments = await db.appointments.find({
+        "appointment_date": new_date,
+        "time_slot": new_time_slot,
+        "status": {"$in": ["scheduled", "confirmed"]},
+        "id": {"$ne": appointment_id}  # Exclude current appointment
+    }).to_list(1000)
+    
+    # Find the time slot capacity
+    slot_capacity = 1  # Default
+    for time_slot in schedule_config["time_slots"]:
+        if f"{time_slot['start_time']}-{time_slot['end_time']}" == new_time_slot:
+            slot_capacity = time_slot["max_capacity"]
+            break
+    
+    if len(existing_appointments) >= slot_capacity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected time slot is not available"
+        )
+    
+    # Create reschedule history record
+    reschedule_history = {
+        "id": str(uuid.uuid4()),
+        "appointment_id": appointment_id,
+        "original_date": appointment["appointment_date"],
+        "original_time_slot": appointment["time_slot"],
+        "new_date": new_date,
+        "new_time_slot": new_time_slot,
+        "reason": reschedule_data.reason,
+        "notes": reschedule_data.notes,
+        "rescheduled_by": current_user["id"],
+        "rescheduled_at": datetime.utcnow()
+    }
+    
+    await db.reschedule_history.insert_one(reschedule_history)
+    
+    # Update the appointment
+    await db.appointments.update_one(
+        {"id": appointment_id},
+        {"$set": {
+            "appointment_date": new_date,
+            "time_slot": new_time_slot,
+            "updated_at": datetime.utcnow(),
+            "updated_by": current_user["id"]
+        }}
+    )
+    
+    return {"message": "Appointment rescheduled successfully"}
+
+@api_router.get("/appointments/{appointment_id}/reschedule-history")
+async def get_reschedule_history(appointment_id: str, current_user: dict = Depends(get_current_user)):
+    # Verify appointment access
+    appointment = await db.appointments.find_one({"id": appointment_id})
+    if not appointment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found"
+        )
+    
+    # Check access rights
+    if current_user["role"] == "Candidate" and appointment["candidate_id"] != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    history = await db.reschedule_history.find({"appointment_id": appointment_id}).sort("rescheduled_at", -1).to_list(1000)
+    return serialize_doc(history)
+
+# Failed Stage Tracking APIs
+@api_router.post("/failed-stages/record")
+async def record_failed_stage(stage_data: FailedStageRecord, current_user: dict = Depends(get_current_user)):
+    # Only officers can record failed stages
+    if current_user["role"] not in ["Driver Assessment Officer", "Manager", "Administrator"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only assessment officers can record failed stages"
+        )
+    
+    # Create failed stage record
+    stage_doc = {
+        "id": str(uuid.uuid4()),
+        **stage_data.dict(),
+        "recorded_by": current_user["email"],
+        "recorded_at": datetime.utcnow()
+    }
+    
+    await db.failed_stage_records.insert_one(stage_doc)
+    return {"message": "Failed stage recorded successfully", "record_id": stage_doc["id"]}
+
+@api_router.get("/failed-stages/candidate/{candidate_id}")
+async def get_candidate_failed_stages(candidate_id: str, current_user: dict = Depends(get_current_user)):
+    # Candidates can only view their own failed stages, staff can view any
+    if current_user["role"] == "Candidate" and current_user["id"] != candidate_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied"
+        )
+    
+    failed_stages = await db.failed_stage_records.find({"candidate_id": candidate_id}).sort("failure_date", -1).to_list(1000)
+    return serialize_doc(failed_stages)
+
+@api_router.get("/failed-stages/analytics")
+async def get_failed_stages_analytics(current_user: dict = Depends(get_current_user)):
+    # Only staff can view analytics
+    if current_user["role"] == "Candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to analytics"
+        )
+    
+    # Get failure statistics by stage
+    pipeline = [
+        {"$group": {
+            "_id": "$stage",
+            "total_failures": {"$sum": 1},
+            "avg_score": {"$avg": "$score_achieved"},
+            "candidates_affected": {"$addToSet": "$candidate_id"}
+        }},
+        {"$addFields": {
+            "unique_candidates": {"$size": "$candidates_affected"}
+        }},
+        {"$project": {
+            "candidates_affected": 0  # Remove the array, keep only count
+        }}
+    ]
+    
+    stage_stats = await db.failed_stage_records.aggregate(pipeline).to_list(10)
+    
+    # Get resit success rates
+    total_resits = await db.resit_sessions.count_documents({})
+    successful_resits = await db.resit_sessions.count_documents({"status": "completed"})
+    
+    return {
+        "stage_failure_stats": serialize_doc(stage_stats),
+        "total_resit_requests": total_resits,
+        "successful_resits": successful_resits,
+        "resit_success_rate": (successful_resits / total_resits * 100) if total_resits > 0 else 0
+    }
+
+# =============================================================================
+# STARTUP AND SHUTDOWN HANDLERS
+# =============================================================================
+
 logger = logging.getLogger(__name__)
 
 async def create_default_admin():
