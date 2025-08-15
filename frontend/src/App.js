@@ -3239,6 +3239,39 @@ function App() {
               </ProtectedRoute>
             }
           />
+          {/* Phase 5: Appointment & Verification System Routes */}
+          <Route
+            path="/book-appointment"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <AppointmentBooking />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-appointments"
+            element={
+              <ProtectedRoute allowedRoles={['Candidate']}>
+                <MyAppointments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/verify-identity"
+            element={
+              <ProtectedRoute allowedRoles={['Driver Assessment Officer', 'Manager', 'Administrator']}>
+                <IdentityVerification />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/schedule-management"
+            element={
+              <ProtectedRoute allowedRoles={['Administrator']}>
+                <ScheduleManagement />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </BrowserRouter>
