@@ -4216,7 +4216,7 @@ async def bulk_import_questions(operation: BulkOperation, current_user: dict = D
                 "explanation": question_data.get("explanation"),
                 "status": "approved",  # Auto-approve bulk imports
                 "created_at": datetime.utcnow(),
-                "created_by": current_user["user_id"]
+                "created_by": current_user["id"]
             }
             
             await db.questions.insert_one(question_doc)
