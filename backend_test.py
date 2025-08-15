@@ -2594,6 +2594,459 @@ class ITABackendTester:
         except Exception as e:
             print(f"💥 Error during User Management testing: {str(e)}")
 
+    # =============================================================================
+    # PHASE 8: CERTIFICATE GENERATION & ADVANCED REPORTING SYSTEM TESTS
+    # =============================================================================
+
+    def test_certificate_generation(self):
+        """Test Phase 8: Certificate Generation System APIs"""
+        print("🏆 Testing Phase 8: Certificate Generation System APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Certificate Generation", False, "Admin login failed")
+            return
+        
+        # Get a test candidate and create a completed test session for certificate generation
+        if 'test_candidate' in self.tokens:
+            candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                         token=self.tokens['test_candidate'])
+            if candidate_profile_response[0]:
+                candidate_id = candidate_profile_response[1].get('id')
+                
+                # Create a mock completed test session
+                session_id = str(uuid.uuid4())
+                
+                # Test creating a certificate
+                certificate_data = {
+                    "candidate_id": candidate_id,
+                    "session_id": session_id,
+                    "certificate_type": "driver_license",
+                    "certificate_number": f"DL{datetime.now().strftime('%Y%m%d')}{candidate_id[:6].upper()}",
+                    "issued_date": datetime.now().strftime('%Y-%m-%d'),
+                    "valid_until": "2029-12-31",
+                    "restrictions": ["Must wear corrective lenses"],
+                    "notes": "Standard driver's license certificate"
+                }
+                
+                success, response = self.make_request('POST', 'certificates', certificate_data,
+                                                    token=self.tokens['admin'], expected_status=200)
+                self.log_test("Create Certificate", success,
+                             f"Certificate ID: {response.get('certificate_id', 'N/A')}, Number: {response.get('certificate_number', 'N/A')}" if success else f"Error: {response}")
+                
+                if success:
+                    self.certificate_id = response.get('certificate_id')
+                    self.certificate_number = response.get('certificate_number')
+                
+                # Test creating another certificate for filtering tests
+                commercial_cert_data = {
+                    "candidate_id": candidate_id,
+                    "session_id": str(uuid.uuid4()),
+                    "certificate_type": "commercial_license",
+                    "certificate_number": f"CDL{datetime.now().strftime('%Y%m%d')}{candidate_id[:6].upper()}",
+                    "issued_date": datetime.now().strftime('%Y-%m-%d'),
+                    "valid_until": "2027-12-31",
+                    "restrictions": ["Class B vehicles only"],
+                    "notes": "Commercial driver's license certificate"
+                }
+                
+                success, response = self.make_request('POST', 'certificates', commercial_cert_data,
+                                                    token=self.tokens['admin'], expected_status=200)
+                self.log_test("Create Commercial Certificate", success,
+                             f"Certificate ID: {response.get('certificate_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test getting all certificates
+        success, response = self.make_request('GET', 'certificates', token=self.tokens['admin'])
+        self.log_test("Get All Certificates", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} certificates" if success else f"Error: {response}")
+        
+        # Test filtering certificates by type
+        success, response = self.make_request('GET', 'certificates?certificate_type=driver_license',
+                                            token=self.tokens['admin'])
+        self.log_test("Get Certificates by Type", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} driver license certificates" if success else f"Error: {response}")
+        
+        # Test filtering certificates by candidate
+        if 'test_candidate' in self.tokens:
+            candidate_profile_response = self.make_request('GET', 'candidates/my-profile', 
+                                                         token=self.tokens['test_candidate'])
+            if candidate_profile_response[0]:
+                candidate_id = candidate_profile_response[1].get('id')
+                success, response = self.make_request('GET', f'certificates?candidate_id={candidate_id}',
+                                                    token=self.tokens['admin'])
+                self.log_test("Get Certificates by Candidate", success,
+                             f"Found {len(response) if isinstance(response, list) else 0} certificates for candidate" if success else f"Error: {response}")
+        
+        # Test getting specific certificate details
+        if hasattr(self, 'certificate_id'):
+            success, response = self.make_request('GET', f'certificates/{self.certificate_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Get Certificate Details", success,
+                         f"Certificate Type: {response.get('certificate_type', 'N/A')}, Status: {response.get('status', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test updating certificate status
+        if hasattr(self, 'certificate_id'):
+            update_data = {
+                "status": "suspended",
+                "notes": "Suspended due to traffic violation"
+            }
+            
+            success, response = self.make_request('PUT', f'certificates/{self.certificate_id}', update_data,
+                                                token=self.tokens['admin'])
+            self.log_test("Update Certificate Status", success,
+                         f"Certificate updated successfully" if success else f"Error: {response}")
+        
+        # Test candidate access to their own certificates
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'certificates', token=self.tokens['test_candidate'])
+            self.log_test("Candidate Get Own Certificates", success,
+                         f"Found {len(response) if isinstance(response, list) else 0} certificates" if success else f"Error: {response}")
+        
+        # Test unauthorized certificate creation
+        if 'test_candidate' in self.tokens:
+            invalid_cert_data = {
+                "candidate_id": "test-candidate",
+                "session_id": "test-session",
+                "certificate_type": "driver_license",
+                "certificate_number": "INVALID123",
+                "issued_date": "2024-01-01",
+                "valid_until": "2029-01-01"
+            }
+            
+            success, response = self.make_request('POST', 'certificates', invalid_cert_data,
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Create Certificate (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_certificate_verification(self):
+        """Test Phase 8: Certificate Verification (Public API)"""
+        print("🔍 Testing Phase 8: Certificate Verification")
+        
+        # Test public certificate verification (no authentication required)
+        if hasattr(self, 'certificate_number'):
+            success, response = self.make_request('POST', f'certificates/verify/{self.certificate_number}',
+                                                expected_status=200)
+            self.log_test("Verify Valid Certificate (Public)", success,
+                         f"Valid: {response.get('valid', False)}, Type: {response.get('certificate_type', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test verification of non-existent certificate
+        fake_cert_number = "FAKE123456789"
+        success, response = self.make_request('POST', f'certificates/verify/{fake_cert_number}',
+                                            expected_status=200)
+        self.log_test("Verify Invalid Certificate (Public)", success,
+                     f"Valid: {response.get('valid', True)}, Message: {response.get('message', 'N/A')}" if success else f"Error: {response}")
+        
+        # Verify the response indicates invalid certificate
+        if success and not response.get('valid', True):
+            self.log_test("Invalid Certificate Response Correct", True, "Correctly returned invalid status")
+        elif success:
+            self.log_test("Invalid Certificate Response Correct", False, "Should have returned invalid status")
+
+    def test_advanced_reporting_dashboard(self):
+        """Test Phase 8: Advanced Reporting Dashboard APIs"""
+        print("📊 Testing Phase 8: Advanced Reporting Dashboard APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Reporting", False, "Admin login failed")
+            return
+        
+        # Test system overview report
+        success, response = self.make_request('GET', 'reports/system-overview', token=self.tokens['admin'])
+        self.log_test("Get System Overview Report", success,
+                     f"Users: {response.get('total_users', 0)}, Sessions: {response.get('total_sessions', 0)}, Certificates: {response.get('total_certificates', 0)}" if success else f"Error: {response}")
+        
+        if success:
+            # Verify report structure
+            expected_keys = ['total_users', 'total_candidates', 'total_sessions', 'total_certificates', 'recent_activity']
+            missing_keys = [key for key in expected_keys if key not in response]
+            
+            if not missing_keys:
+                self.log_test("System Overview Report Structure", True, "All expected fields present")
+            else:
+                self.log_test("System Overview Report Structure", False, f"Missing fields: {missing_keys}")
+        
+        # Test test performance report
+        success, response = self.make_request('GET', 'reports/test-performance', token=self.tokens['admin'])
+        self.log_test("Get Test Performance Report", success,
+                     f"Performance data available" if success else f"Error: {response}")
+        
+        # Test test performance report with date range
+        success, response = self.make_request('GET', 'reports/test-performance?start_date=2024-01-01&end_date=2024-12-31',
+                                            token=self.tokens['admin'])
+        self.log_test("Get Test Performance Report with Date Range", success,
+                     f"Performance data with date filter" if success else f"Error: {response}")
+        
+        # Test test performance report with category filter
+        if hasattr(self, 'categories') and self.categories:
+            category_id = self.categories[0]['id']
+            success, response = self.make_request('GET', f'reports/test-performance?test_category={category_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Get Test Performance Report by Category", success,
+                         f"Performance data for specific category" if success else f"Error: {response}")
+        
+        # Test officer performance report
+        success, response = self.make_request('GET', 'reports/officer-performance', token=self.tokens['admin'])
+        self.log_test("Get Officer Performance Report", success,
+                     f"Officer performance data available" if success else f"Error: {response}")
+        
+        # Test certificate analytics report
+        success, response = self.make_request('GET', 'reports/certificate-analytics', token=self.tokens['admin'])
+        self.log_test("Get Certificate Analytics Report", success,
+                     f"Certificate analytics available" if success else f"Error: {response}")
+        
+        if success:
+            # Verify certificate analytics structure
+            expected_keys = ['total_certificates', 'certificates_by_status', 'certificates_by_type', 'monthly_generation_trends']
+            missing_keys = [key for key in expected_keys if key not in response]
+            
+            if not missing_keys:
+                self.log_test("Certificate Analytics Report Structure", True, "All expected fields present")
+            else:
+                self.log_test("Certificate Analytics Report Structure", False, f"Missing fields: {missing_keys}")
+        
+        # Test unauthorized access to reports
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'reports/system-overview',
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to System Overview (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        if 'officer' in self.tokens:
+            success, response = self.make_request('GET', 'reports/officer-performance',
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Access to Officer Performance Report (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_bulk_operations(self):
+        """Test Phase 8: Bulk Operations APIs"""
+        print("📦 Testing Phase 8: Bulk Operations APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for Bulk Operations", False, "Admin login failed")
+            return
+        
+        # Test bulk user creation
+        bulk_users_data = {
+            "operation_type": "create_users",
+            "data": [
+                {
+                    "email": "bulk.user1@ita.gov",
+                    "password": "bulkuser123",
+                    "full_name": "Bulk User One",
+                    "role": "Driver Assessment Officer",
+                    "is_active": True
+                },
+                {
+                    "email": "bulk.user2@ita.gov",
+                    "password": "bulkuser123",
+                    "full_name": "Bulk User Two",
+                    "role": "Manager",
+                    "is_active": True
+                },
+                {
+                    "email": "bulk.candidate@example.com",
+                    "password": "bulkcandidate123",
+                    "full_name": "Bulk Candidate",
+                    "role": "Candidate",
+                    "is_active": True
+                }
+            ]
+        }
+        
+        success, response = self.make_request('POST', 'bulk/users', bulk_users_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Bulk Create Users", success,
+                     f"Created: {response.get('created', 0)}, Errors: {len(response.get('errors', []))}" if success else f"Error: {response}")
+        
+        # Test bulk question import
+        if hasattr(self, 'categories') and self.categories:
+            category_id = self.categories[0]['id']
+            bulk_questions_data = {
+                "operation_type": "import_questions",
+                "data": [
+                    {
+                        "category_id": category_id,
+                        "question_type": "multiple_choice",
+                        "question_text": "Bulk Question 1: What is the maximum speed in school zones?",
+                        "options": [
+                            {"text": "25 km/h", "is_correct": True},
+                            {"text": "40 km/h", "is_correct": False},
+                            {"text": "50 km/h", "is_correct": False},
+                            {"text": "60 km/h", "is_correct": False}
+                        ],
+                        "difficulty": "easy",
+                        "explanation": "School zones have reduced speed limits for safety"
+                    },
+                    {
+                        "category_id": category_id,
+                        "question_type": "true_false",
+                        "question_text": "Bulk Question 2: You must stop at a yellow traffic light.",
+                        "correct_answer": False,
+                        "difficulty": "medium",
+                        "explanation": "Yellow light means prepare to stop, not mandatory stop"
+                    },
+                    {
+                        "category_id": category_id,
+                        "question_type": "multiple_choice",
+                        "question_text": "Bulk Question 3: What should you do when approaching a roundabout?",
+                        "options": [
+                            {"text": "Speed up to merge quickly", "is_correct": False},
+                            {"text": "Yield to traffic already in the roundabout", "is_correct": True},
+                            {"text": "Stop completely before entering", "is_correct": False},
+                            {"text": "Honk your horn", "is_correct": False}
+                        ],
+                        "difficulty": "medium",
+                        "explanation": "Always yield to traffic already in the roundabout"
+                    }
+                ]
+            }
+            
+            success, response = self.make_request('POST', 'bulk/questions', bulk_questions_data,
+                                                token=self.tokens['admin'], expected_status=200)
+            self.log_test("Bulk Import Questions", success,
+                         f"Created: {response.get('created', 0)}, Errors: {len(response.get('errors', []))}" if success else f"Error: {response}")
+        
+        # Test bulk question export
+        success, response = self.make_request('GET', 'bulk/export/questions', token=self.tokens['admin'])
+        self.log_test("Bulk Export Questions", success,
+                     f"Exported {response.get('total', 0)} questions" if success else f"Error: {response}")
+        
+        # Test bulk export with category filter
+        if hasattr(self, 'categories') and self.categories:
+            category_id = self.categories[0]['id']
+            success, response = self.make_request('GET', f'bulk/export/questions?category_id={category_id}',
+                                                token=self.tokens['admin'])
+            self.log_test("Bulk Export Questions by Category", success,
+                         f"Exported {response.get('total', 0)} questions for category" if success else f"Error: {response}")
+        
+        # Test unauthorized bulk operations
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'bulk/users', bulk_users_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Bulk Create Users (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'bulk/export/questions',
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Bulk Export Questions (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+
+    def test_system_configuration(self):
+        """Test Phase 8: System Configuration APIs"""
+        print("⚙️ Testing Phase 8: System Configuration APIs")
+        
+        if 'admin' not in self.tokens:
+            self.log_test("Admin Token Required for System Configuration", False, "Admin login failed")
+            return
+        
+        # Test creating system configurations
+        config_data = {
+            "category": "test_settings",
+            "key": "max_test_duration",
+            "value": "45",
+            "description": "Maximum test duration in minutes",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'system/config', config_data,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create System Configuration", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test creating another configuration
+        config_data2 = {
+            "category": "test_settings",
+            "key": "min_pass_score",
+            "value": "75",
+            "description": "Minimum passing score percentage",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'system/config', config_data2,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Another System Configuration", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test creating configuration in different category
+        config_data3 = {
+            "category": "certificate_settings",
+            "key": "default_validity_years",
+            "value": "5",
+            "description": "Default certificate validity in years",
+            "is_active": True
+        }
+        
+        success, response = self.make_request('POST', 'system/config', config_data3,
+                                            token=self.tokens['admin'], expected_status=200)
+        self.log_test("Create Configuration in Different Category", success,
+                     f"Config ID: {response.get('config_id', 'N/A')}" if success else f"Error: {response}")
+        
+        # Test getting all system configurations
+        success, response = self.make_request('GET', 'system/config', token=self.tokens['admin'])
+        self.log_test("Get All System Configurations", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} configurations" if success else f"Error: {response}")
+        
+        # Test getting configurations by category
+        success, response = self.make_request('GET', 'system/config?category=test_settings',
+                                            token=self.tokens['admin'])
+        self.log_test("Get Configurations by Category", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} test_settings configurations" if success else f"Error: {response}")
+        
+        # Test updating specific configuration
+        update_data = {
+            "value": "50",
+            "description": "Updated maximum test duration in minutes"
+        }
+        
+        success, response = self.make_request('PUT', 'system/config/test_settings/max_test_duration',
+                                            update_data, token=self.tokens['admin'])
+        self.log_test("Update Specific Configuration", success,
+                     f"Configuration updated successfully" if success else f"Error: {response}")
+        
+        # Test getting configuration categories
+        success, response = self.make_request('GET', 'system/config/categories', token=self.tokens['admin'])
+        self.log_test("Get Configuration Categories", success,
+                     f"Found {len(response) if isinstance(response, list) else 0} categories" if success else f"Error: {response}")
+        
+        # Test updating non-existent configuration
+        success, response = self.make_request('PUT', 'system/config/nonexistent/nonexistent',
+                                            update_data, token=self.tokens['admin'], expected_status=404)
+        self.log_test("Update Non-existent Configuration (Should Fail)", success,
+                     f"Correctly rejected: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test unauthorized access to system configuration
+        if 'test_candidate' in self.tokens:
+            success, response = self.make_request('GET', 'system/config',
+                                                token=self.tokens['test_candidate'], expected_status=403)
+            self.log_test("Candidate Access to System Config (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        if 'officer' in self.tokens:
+            success, response = self.make_request('POST', 'system/config', config_data,
+                                                token=self.tokens['officer'], expected_status=403)
+            self.log_test("Officer Create System Config (Should Fail)", success,
+                         f"Correctly blocked: {response.get('detail', 'N/A')}" if success else f"Unexpected: {response}")
+        
+        # Test Manager access to read configurations (should be allowed)
+        if 'manager' in self.tokens:
+            success, response = self.make_request('GET', 'system/config', token=self.tokens['manager'])
+            self.log_test("Manager Read System Config", success,
+                         f"Manager can read configurations" if success else f"Error: {response}")
+
+    def run_phase_8_tests(self):
+        """Run all Phase 8 tests"""
+        print("🚀 Running Phase 8: Certificate Generation & Advanced Reporting System Tests")
+        print("=" * 80)
+        
+        try:
+            self.test_certificate_generation()
+            self.test_certificate_verification()
+            self.test_advanced_reporting_dashboard()
+            self.test_bulk_operations()
+            self.test_system_configuration()
+        except Exception as e:
+            print(f"💥 Error during Phase 8 testing: {str(e)}")
+
     def run_all_tests(self):
         """Run all backend tests"""
         print("🧪 Starting Comprehensive Backend API Testing")
