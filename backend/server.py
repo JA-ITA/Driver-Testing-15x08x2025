@@ -4451,6 +4451,7 @@ async def create_default_admin():
 async def startup_event():
     """Run startup tasks"""
     await create_default_admin()
+    await create_default_configs()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
