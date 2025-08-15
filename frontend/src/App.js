@@ -5214,4 +5214,263 @@ const EvaluationCriteriaManagement = () => {
   );
 };
 
+// Officer Assignments Component
+const OfficerAssignments = () => {
+  const [sessions, setSessions] = useState([]);
+  const [officers, setOfficers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [assignments, setAssignments] = useState([]);
+
+  useEffect(() => {
+    fetchSessions();
+    fetchOfficers();
+  }, []);
+
+  const fetchSessions = async () => {
+    try {
+      // Get multi-stage test sessions that need officer assignments
+      const response = await axios.get(`${API}/multi-stage-tests/results`);
+      const activeSessions = response.data.filter(session => 
+        session.status === 'written_passed' || session.status === 'yard_passed'
+      );
+      setSessions(activeSessions);
+    } catch (error) {
+      console.error('Error fetching test sessions:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchOfficers = async () => {
+    try {
+      const response = await axios.get(`${API}/candidates`);
+      const officerUsers = response.data.filter(user => 
+        user.role === 'Driver Assessment Officer' && user.status === 'approved'
+      );
+      setOfficers(officerUsers);
+    } catch (error) {
+      console.error('Error fetching officers:', error);
+    }
+  };
+
+  const assignOfficer = async (sessionId, stage, officerId) => {
+    try {
+      await axios.post(`${API}/multi-stage-tests/assign-officer`, {
+        session_id: sessionId,
+        stage: stage,
+        officer_id: officerId
+      });
+      
+      // Refresh sessions
+      fetchSessions();
+      
+      alert('Officer assigned successfully!');
+    } catch (error) {
+      console.error('Error assigning officer:', error);
+      alert(error.response?.data?.detail || 'Error assigning officer');
+    }
+  };
+
+  const getNextStage = (session) => {
+    if (session.status === 'written_passed') return 'yard';
+    if (session.status === 'yard_passed') return 'road';
+    return null;
+  };
+
+  const getStageColor = (stage) => {
+    switch (stage) {
+      case 'yard': return 'bg-green-100 text-green-800';
+      case 'road': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Officer Assignments</h1>
+            <p className="text-slate-600 mt-1">Assign assessment officers to practical test stages</p>
+          </div>
+          <div className="flex items-center space-x-4">
+            <Badge variant="outline" className="px-3 py-1">
+              {sessions.length} Sessions Pending Assignment
+            </Badge>
+            <Badge variant="secondary" className="px-3 py-1">
+              {officers.length} Available Officers
+            </Badge>
+          </div>
+        </div>
+
+        {sessions.length === 0 ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <UserCheck className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-slate-800 mb-2">No Sessions Pending Assignment</h3>
+              <p className="text-slate-600">All multi-stage test sessions are either completed or don't require officer assignments yet.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6">
+            {sessions.map((session) => {
+              const nextStage = getNextStage(session);
+              if (!nextStage) return null;
+
+              return (
+                <Card key={session.id}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="flex items-center space-x-3">
+                          <span>Test Session</span>
+                          <Badge className={getStageColor(nextStage)}>
+                            {nextStage === 'yard' ? 'Yard Test Required' : 'Road Test Required'}
+                          </Badge>
+                        </CardTitle>
+                        <CardDescription>
+                          Candidate: {session.candidate_name} | Created: {new Date(session.created_at).toLocaleDateString()}
+                        </CardDescription>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="outline">Session ID: {session.id.slice(-6)}</Badge>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Session Progress */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">Session Progress</h4>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <span className="text-sm">Written Test: Passed</span>
+                          </div>
+                          {session.status === 'yard_passed' && (
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle className="h-4 w-4 text-green-600" />
+                              <span className="text-sm">Yard Test: Passed</span>
+                            </div>
+                          )}
+                          <div className="flex items-center space-x-2">
+                            <Clock className="h-4 w-4 text-orange-600" />
+                            <span className="text-sm font-medium">
+                              {nextStage === 'yard' ? 'Yard Test: Pending' : 'Road Test: Pending'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Stage Details */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">
+                          {nextStage === 'yard' ? 'Yard Test Requirements' : 'Road Test Requirements'}
+                        </h4>
+                        <div className="text-sm text-slate-600">
+                          {nextStage === 'yard' ? (
+                            <ul className="space-y-1">
+                              <li>• Reversing</li>
+                              <li>• Parallel Parking</li>
+                              <li>• Hill Start</li>
+                              <li>• Vehicle Control</li>
+                            </ul>
+                          ) : (
+                            <ul className="space-y-1">
+                              <li>• Use of Road</li>
+                              <li>• Three-Point Turns</li>
+                              <li>• Intersections</li>
+                              <li>• Traffic Rules</li>
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Officer Assignment */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium text-slate-800">Assign Assessment Officer</h4>
+                        {officers.length === 0 ? (
+                          <p className="text-sm text-slate-600">No officers available</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {officers.slice(0, 3).map((officer) => (
+                              <Button
+                                key={officer.id}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => assignOfficer(session.id, nextStage, officer.id)}
+                                className="w-full justify-start"
+                              >
+                                <User className="h-4 w-4 mr-2" />
+                                {officer.first_name} {officer.last_name}
+                              </Button>
+                            ))}
+                            {officers.length > 3 && (
+                              <Select onValueChange={(officerId) => assignOfficer(session.id, nextStage, officerId)}>
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="More officers..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {officers.slice(3).map((officer) => (
+                                    <SelectItem key={officer.id} value={officer.id}>
+                                      {officer.first_name} {officer.last_name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Officer Availability Summary */}
+        {officers.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Available Assessment Officers</CardTitle>
+              <CardDescription>Officers available for practical test evaluations</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {officers.map((officer) => (
+                  <div key={officer.id} className="flex items-center space-x-3 p-3 border rounded-lg">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        {officer.first_name?.[0]}{officer.last_name?.[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium text-slate-800">
+                        {officer.first_name} {officer.last_name}
+                      </p>
+                      <p className="text-xs text-slate-600">Assessment Officer</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+};
+
 export default App;
