@@ -3722,6 +3722,23 @@ async def get_failed_stages_analytics(current_user: dict = Depends(get_current_u
         "resit_success_rate": (successful_resits / total_resits * 100) if total_resits > 0 else 0
     }
 
+# Include the router in the main app
+app.include_router(api_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 # =============================================================================
 # STARTUP AND SHUTDOWN HANDLERS
 # =============================================================================
