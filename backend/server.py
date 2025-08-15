@@ -4266,7 +4266,7 @@ async def create_system_config(config: SystemConfig, current_user: dict = Depend
         "description": config.description,
         "is_active": config.is_active,
         "created_at": datetime.utcnow(),
-        "created_by": current_user["user_id"]
+        "created_by": current_user["id"]
     }
     
     # Check if config already exists
