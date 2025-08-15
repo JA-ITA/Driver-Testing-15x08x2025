@@ -270,11 +270,11 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Question Approvals Interface"
-    - "Test Taking System API"
-    - "Test Taking Interface"
+    - "Phase 5 Appointment System API"
+    - "Phase 5 Identity Verification API"
+    - "Phase 5 Enhanced Admin Management API"
   stuck_tasks: []
-  test_all: true
+  test_all: false
   test_priority: "high_first"
 
 agent_communication:
