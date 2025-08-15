@@ -1430,6 +1430,9 @@ class ITABackendTester:
             # Phase 5: Appointment & Verification System
             self.run_phase_5_tests()
             
+            # Phase 6: Multi-Stage Testing System
+            self.run_phase_6_tests()
+            
         except Exception as e:
             print(f"💥 Critical error during testing: {str(e)}")
             return False
