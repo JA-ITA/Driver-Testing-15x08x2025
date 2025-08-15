@@ -6,7 +6,7 @@ Verify test session functionality after fixing the question issue
 import requests
 import json
 
-BASE_URL = "https://retry-system.preview.emergentagent.com/api"
+BASE_URL = "https://role-manager-6.preview.emergentagent.com/api"
 
 def login_candidate():
     """Login as test candidate"""

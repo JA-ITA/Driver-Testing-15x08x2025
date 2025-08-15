@@ -11,7 +11,7 @@ from datetime import datetime
 
 class Phase7Tester:
     def __init__(self):
-        self.base_url = "https://retry-system.preview.emergentagent.com/api"
+        self.base_url = "https://role-manager-6.preview.emergentagent.com/api"
         self.tokens = {}
         self.users = {}
         self.categories = []
