@@ -4174,7 +4174,7 @@ async def bulk_create_users(operation: BulkOperation, current_user: dict = Depen
                 "password": get_password_hash(user_data.get("password", "TempPass123!")),
                 "is_active": True,
                 "created_at": datetime.utcnow(),
-                "created_by": current_user["user_id"]
+                "created_by": current_user["id"]
             }
             
             await db.users.insert_one(user_doc)
