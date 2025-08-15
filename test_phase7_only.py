@@ -7,7 +7,7 @@ import requests
 import json
 
 def test_phase7_endpoints():
-    base_url = "https://role-manager-6.preview.emergentagent.com/api"
+    base_url = "https://cert-license-admin.preview.emergentagent.com/api"
     
     # First login as admin
     admin_login = {
